@@ -1,0 +1,231 @@
+---
+title: "Does it work? Comparing predicted and observed accuracy and response times"
+author: '[Florian Sense](f.sense@rug.nl)'
+date: "March 2018 -- last compiled: `r Sys.time()`"
+output: 
+  html_document:
+    toc: true
+---
+
+```{r, echo=FALSE}
+# Helper functions
+percent <- function(X, digits=1) {
+  # convert a proportion to percent and return as string with % sign.
+  return( paste0(format(round(X*100, digits), nsmall=digits), "%") )
+}
+
+prettify <- function(X) {
+  # Just to save myself some typing:
+  return( prettyNum(X, big.mark = ",") )
+}
+```
+
+
+# Goal
+
+We are interested here in getting an idea of how well the model is able to predict the observed behavior/responses. There are two relevant outcome meaures: Accuracy and response times (RT). The predictions for both are a direct consequence of the estimated activation of a given fact at that point in time: If the activation is below a certain threshold, the prediction is that a learner is not able to retrieve the fact accurately anymore; the activation has decayed too much and the fact has been forgotten. Above the threshold, the fact should be retrievable but the probability of a correct retrieval is a function of the activation such that higher activation results in higher probabilites. Furthermore, a fact's activation can also be translated into an expected response latency. Thus, the latent concept *activation* is directly linked to two observable behavioral measures that provide a proxy to test how well the predicted performance measures match the observed behavior.
+
+
+# The data
+
+```{r}
+library(BayesFactor)
+library(ggplot2)
+theme_set(theme_minimal())
+library(hexbin) # for stat_hexbin()
+library(overlapping) # to compute overlap between distributions
+
+load(file.path("..", "data", "data & grades anon w IC.Rdata"))
+figures.folder <- "figures for ICCM poster"
+```
+
+
+We are interested here only in the trial-by-trial data recorded during study, which is available in `data`.
+
+
+# Comparing predicted and observed accuracy
+
+## Binary predictions: Is the activation above/below threshold?
+
+The most simplistic approach is to simply look, for each trial, whether the estimated activation is above or below the retrieval threshold. **The threshold is fixed at -0.8**.
+
+```{r}
+data$est.correct <- data$activation >= -.8
+```
+
+The number of errors made by students during learning was relatively low: `r percent(mean(data$correct))`% of all recorded responses were correct. This is great. The model estimates a fact to be un-retrievable if the estimated activation is below the retrieval threshold. Across all recorded trials, the estimated activation was below the threshold on `r round(mean(data$est.correct)*100, 1)`% of the trials. This indicates that the model severely underestimates students' performance. Overall, the predicted behavior matched the observed behavior on `r percent(mean(data$correct == data$est.correct))`% of the trials. 
+
+```{r}
+(bf.prop <- proportionBF(sum(data$correct == data$est.correct), nrow(data), p=1/2))
+```
+
+The proportion test yields overwhelming evidence that the proportion of instances in which the predicted response matches the observed response is *not* 0.5. It is in fact `r round(mean(data$correct == data$est.correct), 3)`, which -- I think -- can be seen as chance performance for practical purposes. (The statistical test is based on N = `r prettyNum(nrow(data), big.mark=",")`, so there's a ton of data to reveal even the smallest differences.)
+
+There is a potential problem here, though: The proportion of trials in which the estimated activation is very low is rather high. Ideally, the model will prevent this situation by making sure that items are presented for rehearsal before the activation can decay that much. However, the model can only do this if people are actually studying. It cannot prevent activation to decay between sessions. Therefore, it makes sense to look at the activation of a fact seperately for (a) the first repetition in a session after a delay, and (b) within-session repetitions. The proportion of instances in which the model's prediction matches the behavior should be higher in (b) and might potentially be very low for (a). In (b), the number of trials in which the predicted activation is below the threshold should ideally be 0.
+
+### Between- vs. within-session repetitions
+
+
+
+
+
+
+
+# Comparing predicted and observed response times
+
+The first issue here is that the RTs are very noisy. RTs are notoriously noisy, of course. However, here, we have some extremely long RTs that are probably the result of people just leaving the app running and doing other stuff while the app is patiently waiting for a response to be recorded. So we should first deal with those.
+
+## Dealing with *very* long RTs
+
+```{r}
+range(data$reactionTime, na.rm = TRUE) / 1000 # in seconds
+```
+
+
+
+```{r}
+RT.cutoff <- c(300, 60*1000) # boundaries in ms
+mean(data$reactionTime < RT.cutoff[1], na.rm = TRUE)  # proportion of trials excluded
+mean(data$reactionTime > RT.cutoff[2], na.rm = TRUE)  # proportion of trials excluded
+mean(data$reactionTime > RT.cutoff[1] & data$reactionTime < RT.cutoff[2], na.rm = TRUE) # prop. of data retained overall
+
+data.RT <- subset(data, reactionTime > RT.cutoff[1] & reactionTime < RT.cutoff[2])
+```
+
+
+
+## Dealing with RTs that are `NA`
+
+RTs are the time between the prompt appearing on screen and the user pressing the first key to initiate their response. If, however, the user subsequently uses backspace to correct their input, the RT is set to `NA` if the first letter of the input was deleted (but not if other letter are deleted). The logic behind this is that if the user deletes the first letter, they are likely to provide a response that is different from what they had originally intended. This implies that they retrieved one answer but subsequently retrieved another answer that was given instead. Therefore, the RT doesn't reflect the retrieval time of the given response and is thus not a proxy for the activation of that fact in memory. In that case, we lose the ability to estimate the activation for that particular fact using their RT. 
+
+```{r}
+mean(is.na(data$reactionTime)) 
+
+data.RT <- subset(data.RT, !is.na(reactionTime))
+```
+
+After removing observations with RTs outside the specified boundaries and those that are `NA`, we are left with `r prettyNum(nrow(data.RT), big.mark=",")` observations (`r round((nrow(data.RT)/nrow(data))*100, 1)`% of original data).
+
+
+# Comparing predicted and observed RTs in the subset of "reasonable" RTs
+
+As a first step, lets compare the two RT distributions.
+
+```{r}
+ggplot(data.RT, aes(reactionTime)) + 
+  geom_histogram() + 
+  geom_vline(xintercept = median(data.RT$reactionTime), color="red") +
+  labs(x="Recorded Reaction Time (in ms)", 
+       title="Distribution of Recorded RTs", 
+       subtitle = paste("Based on non-NA RTs in the range of [", paste(prettyNum(RT.cutoff, big.mark = ","), collapse = "; "), "]", sep="")) 
+```
+
+Now for the estimated/predicted RTs. One issue here is that a good portion of the predicted RTs are `Inf` and a similar portion are longer than the upper boundary of the `RT.cutoff`. I'll plot here only
+
+```{r}
+mean(is.infinite(data.RT$estimatedResponseTime))
+mean(data.RT$estimatedResponseTime > RT.cutoff[2])
+mean(!is.infinite(data.RT$estimatedResponseTime) & data.RT$estimatedResponseTime < RT.cutoff[2]) # retained if both are removed
+
+data.RT.sub <- subset(data.RT, !is.infinite(data.RT$estimatedResponseTime) & data.RT$estimatedResponseTime < RT.cutoff[2])
+
+ggplot(data.RT.sub, aes(estimatedResponseTime)) + 
+  geom_histogram() + 
+  geom_vline(xintercept = median(data.RT$reactionTime), color="red") +
+  labs(x="Predicted Reaction Time (in ms)", title="Distribution of Predicted RTs", subtitle = paste("Based on non-infinite RTs in shorter than ", prettyNum(RT.cutoff[2], big.mark = ","), "ms", sep="")) +
+  NULL
+```
+
+The distribution looks more narrowly centered around the median with a thinner tail. A more direct comparison might be more interesting:
+
+```{r}
+probs <- seq(.1, .9, .1)
+quant <- data.frame(estimatedResponseTime = quantile(data.RT.sub$estimatedResponseTime, probs = probs),
+                    reactionTime = quantile(data.RT.sub$reactionTime, probs = probs) )
+  
+ggplot(data.RT.sub, aes(estimatedResponseTime, reactionTime)) + 
+  geom_abline(intercept = 0, slope = 1, color="grey") + 
+  geom_point(alpha=.2) + 
+  geom_point(data=quant, colour="yellow", size=3) +
+  geom_smooth(method="lm") +
+  labs(title="Comparing predicted and observed RTs", x="Predicted RT", y="Observed RT",
+       subtitle=paste("Based on ", prettyNum(nrow(data.RT.sub), big.mark = ","), " observations (", round((nrow(data.RT.sub)/nrow(data))*100, 1), "% of all recorded data).", sep="")) +
+  coord_fixed() +
+  NULL
+```
+
+This plot shows the raw data points. But, of course, there are **many**. Exporting this plot results in a huge file and the plot also doesn't quite show were most of the mass is. I did overlaid the quantiles on each dimension, though to add some kind of summary statistic: The superimposed yellow points show the quantiles (specifically `r paste(probs*100, "%", collapse = ", ", sep="")`). The blue line is the lm fit that corresponds to the regression coefficient: r = `r round(cor(data.RT.sub$estimatedResponseTime, data.RT.sub$reactionTime), 3)`. Given the huge amount of data, this coefficient will of course be shown not to be 0: t = 114.21, df = 268330, p-value < 2.2e-16.
+
+For a more digestible plot, this might be nice:
+
+```{r}
+ggplot(data.RT.sub, aes(estimatedResponseTime, reactionTime)) + 
+  geom_abline(intercept = 0, slope = 1, color="grey") + 
+  stat_binhex(alpha = .9) +
+  # geom_smooth(method="lm") +
+  labs(title="Comparing predicted and observed RTs", x="\nPredicted RT (ms)", y="\nObserved RT (ms)",
+       subtitle=paste("Based on ", prettyNum(nrow(data.RT.sub), big.mark = ","), " observations (", round((nrow(data.RT.sub)/nrow(data))*100, 1), "% of all recorded data)", sep=""), fill="Observations:") +
+  coord_fixed() +
+  scale_x_continuous(breaks = seq(0, RT.cutoff[2], 10000)) +
+  scale_y_continuous(breaks = seq(0, RT.cutoff[2], 10000)) +
+  theme(legend.title=element_text(size=8)) +
+  NULL
+
+ggsave(file.path(figures.folder, "Predicted vs. observed RT distributions hexbin.pdf"), width = 5.5, height = 5)
+```
+
+
+Another way to approach this might be to plot the distributions in the same figure, to get a direct visual comparison:
+
+```{r}
+# Compute the overlap between the distributions:
+tmp <- list(X1=data.RT.sub$reactionTime, X2=data.RT.sub$estimatedResponseTime)
+olap <- overlap(tmp) # compute overlap; percent is stored in $OV
+
+# Correlation between the values?
+corr <- cor(data.RT.sub$reactionTime, data.RT.sub$estimatedResponseTime)
+
+## Prepare the plot
+# The tail will be very long, so I'll chop some of it off to make the visual presentation a bit nicer:
+dist <- rbind(data.frame(x=data.RT.sub$reactionTime, type="Observed"),
+              data.frame(x=data.RT.sub$estimatedResponseTime, type="Predicted"))
+
+cutoff <- 30*1000
+retained <- mean(dist$x < cutoff)
+dist <- subset(dist, x < cutoff)
+
+medians <- aggregate(x ~ type, dist, median)
+
+rmse <- sqrt(mean((data.RT.sub$reactionTime - data.RT.sub$estimatedResponseTime)^2))
+
+# Make the plot:
+ggplot(dist, aes(x, group=type)) + 
+  geom_density(aes(fill=type), alpha=.7, color=NA) +
+  # Add some text to the plot:
+  annotate("text", x=cutoff*.5 + 500, y=2.5/10000, label=paste("Overlap:", percent(olap$OV)), hjust=0) +
+  annotate("text", x=cutoff*.5 + 500, y=2/10000, label=paste("r =", round(corr, 3)), hjust=0) +
+  annotate("text", x=cutoff*.5 + 500, y=1.5/10000, label=paste("RMSE =", prettify(round(rmse))), hjust=0) +
+  geom_vline(data=medians, aes(xintercept=x, color=type), show.legend = FALSE) +
+  theme(legend.position = c(0.85, 0.85)) +
+  labs(title="Comparing RT Distributions: Observed vs. Predicted", x="Response Time (ms)", y=NULL, fill=NULL) +
+  scale_y_continuous(labels = NULL) +
+  scale_x_continuous(breaks = seq(0, cutoff, cutoff/6), labels = prettify(seq(0, cutoff, cutoff/6))) +
+  NULL
+
+ggsave(file.path(figures.folder, "Predicted vs. observed RT distributions density.pdf"), width = 5, height = 4)
+```
+
+Using a cutoff of `r prettify(cutoff)` for the plotting, we're retaining `r percent(retained)` of the data. Note that the correlation coefficient and the overlap are computed across all data in `data.RT.sub` and are not affected by the `cutoff`.
+
+
+## Conclusions
+
+It's difficult to get a good feeling for what a reasonable overlap/correlation/RMSE is for the predicted vs. observed RTs. A couple of things that should be noted, though: The RMSE is higher than the median. That seems quite high. The predicted distribution looks more normal than the observed: Its median is right at its peak, whereas it is shifted to the right of the peak of the observed distribution. RT distributions are usually skewed like that, not normal -- might point towards a general problem with predicted RTs that result in a normal distribution?
+
+
+# Misc
+
+```{r}
+sessionInfo()
+```
+
