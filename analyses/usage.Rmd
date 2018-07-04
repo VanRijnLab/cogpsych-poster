@@ -1,0 +1,132 @@
+---
+title: "How do students use the system?"
+author: "Maarten van der Velde"
+output: 
+  html_notebook: 
+    smart: false
+    toc: TRUE
+    toc_float:
+      collapsed: false
+---
+
+
+# Load required packages
+```{r}
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+
+theme_set(theme_classic())
+```
+
+
+# Load data
+```{r}
+# load("../data/data & grades anon w IC.Rdata")
+load("../data/CogPsych_trial_data_full.Rdata")
+```
+
+
+
+# Add time columns
+
+```{r}
+d <- d %>%
+  mutate(start_time = as.POSIXct(start_time / 1000, origin = "1970-01-01", tz = "UTC"),
+         month = factor(month(start_time)),
+         doy = as_date(start_time),
+         weekday = factor(weekdays(start_time), levels = c("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")),
+         hour = hour(round_date(start_time, "hour")))
+```
+
+
+# Plot usage by date
+
+```{r}
+start_date <- as_date("2017-09-12")
+exam_date <- as_date("2017-11-01")
+resit_date <- as_date("2017-12-07")
+
+usage_by_doy <- d %>%
+  group_by(doy) %>%
+  tally() %>%
+  ungroup() %>%
+  mutate(days_until_exam = exam_date - doy)
+
+
+# Absolute date
+ggplot(usage_by_doy, aes(x = doy, y = n / 1000)) +
+  geom_point() +
+  geom_line() +
+  scale_x_date(date_breaks = "1 month", date_labels = "%b %Y") +
+  labs(x = "Date", y = "Number of trials (x 1000)") +
+  geom_vline(xintercept = c(start_date, exam_date, resit_date), lty = "dotted") +
+  annotate("label", x = c(start_date, exam_date, resit_date), y = 70, label = c("Start", "Exam", "Resit"))
+
+
+# Days until exam
+ggplot(usage_by_doy, aes(x = days_until_exam , y = n / 1000)) +
+  geom_point() +
+  geom_line() +
+  xlim(as.numeric(c(exam_date - start_date, exam_date - resit_date))) +
+  labs(x = "Days until exam", y = "Number of trials (x 1000)") +
+  geom_vline(xintercept = as.numeric(c(exam_date - start_date, 0, exam_date - resit_date)), lty = "dotted") +
+  annotate("label", x = as.numeric(c(exam_date - start_date, 0, exam_date - resit_date)), y = 70, label = c("Start", "Exam", "Resit"))
+```
+
+
+
+# Plot usage by hour of day
+
+The plot below shows the absolute number of study trials. The cramming happening on the Tuesday before the exam is clearly visible here.
+```{r}
+usage_by_hour_of_day <- d %>%
+  group_by(weekday, hour) %>%
+  tally() %>%
+  group_by(weekday) %>%
+  mutate(freq = n/sum(n)) %>%
+  ungroup() %>%
+  mutate(weekday = factor(weekday, levels = rev(levels(weekday))))
+
+ggplot(usage_by_hour_of_day, aes(x = hour, y = weekday)) +
+  geom_tile(aes(fill = n)) +
+  coord_equal() +
+  scale_fill_distiller(palette = "OrRd", direction = 1) +
+  scale_x_continuous(breaks = c(0:23)) +
+  labs(x = "Hour of the day", y = "Day of the week", title = "Study frequency")
+```
+
+
+In the plot below, frequency is normalised within days (so that the sum of all hours in a day equals 1).
+This lets us see how learning is distributed within a day, but does not allow direct comparison between days (points with the same colour do not necessarily have the same absolute study frequency, only the same relative frequency within their respective days).
+
+
+```{r}
+ggplot(usage_by_hour_of_day, aes(x = hour, y = weekday)) +
+  geom_tile(aes(fill = freq)) +
+  coord_equal() +
+  scale_fill_distiller(palette = "OrRd", direction = 1) +
+  scale_x_continuous(breaks = c(0:23)) +
+  labs(x = "Hour of the day", y = "Day of the week", title = "Study frequency")
+```
+
+To simplify, we can also average over all days and only plot the usage by hour:
+```{r}
+usage_by_hour_of_day <- d %>%
+  group_by(hour) %>%
+  tally() %>%
+  mutate(freq = n/sum(n)) %>%
+  ungroup()
+
+
+ggplot(usage_by_hour_of_day, aes(x = hour, y = freq)) +
+  geom_point() +
+  geom_line() +
+  # scale_x_continuous(breaks = 0:7 * 3, labels = c(paste(0:3 * 3, "AM"), "12 PM", paste(5:7*3-12,"PM"))) +
+  scale_x_continuous(breaks = 0:23) +
+  labs(x = "Hour of the day", title = "Study frequency")
+
+```
+
+
+# Session duration
