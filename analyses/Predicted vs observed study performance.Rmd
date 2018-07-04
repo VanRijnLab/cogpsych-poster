@@ -37,6 +37,23 @@ library(overlapping) # to compute overlap between distributions
 
 load(file.path("..", "data", "data & grades anon w IC.Rdata"))
 figures.folder <- "figures for ICCM poster"
+
+
+# I'll also check some of these things in the more "controlled" data that we collected in the lab to see what it looks like there.
+# I'll download these directly from the OSF. This only needs to be done once and will save the data/CSV to ../data/:
+if(FALSE) {
+  require("httr")
+  path <- file.path("..", "data", "topics_data.csv")
+  foo <- GET('https://osf.io/njhz4//?action=download', write_disk(path, overwrite = TRUE))
+  lab.data <- read.csv(file.path("..", "data", "topics_data.csv"), row.names=NULL, stringsAsFactors = FALSE)
+  # Fix some stuff:
+  lab.data$RT <- as.numeric(lab.data$RT)
+  lab.data <- subset(lab.data, !is.na(RT))
+  lab.data$estRT <- lab.data$estRT * 1000 # make same unit as RT
+  write.csv(lab.data, path)
+} else {
+  lab.data <- read.csv(file.path("..", "data", "topics_data.csv"), row.names=NULL, stringsAsFactors = FALSE)[, -1]
+}
 ```
 
 
@@ -197,6 +214,7 @@ dist <- subset(dist, x < cutoff)
 medians <- aggregate(x ~ type, dist, median)
 
 rmse <- sqrt(mean((data.RT.sub$reactionTime - data.RT.sub$estimatedResponseTime)^2))
+mae <- mean(abs(data.RT.sub$reactionTime - data.RT.sub$estimatedResponseTime))
 
 # Make the plot:
 ggplot(dist, aes(x, group=type)) + 
@@ -205,6 +223,7 @@ ggplot(dist, aes(x, group=type)) +
   annotate("text", x=cutoff*.5 + 500, y=2.5/10000, label=paste("Overlap:", percent(olap$OV)), hjust=0) +
   annotate("text", x=cutoff*.5 + 500, y=2/10000, label=paste("r =", round(corr, 3)), hjust=0) +
   annotate("text", x=cutoff*.5 + 500, y=1.5/10000, label=paste("RMSE =", prettify(round(rmse))), hjust=0) +
+  annotate("text", x=cutoff*.5 + 500, y=1/10000, label=paste("MAE =", prettify(round(mae))), hjust=0) +
   geom_vline(data=medians, aes(xintercept=x, color=type), show.legend = FALSE) +
   theme(legend.position = c(0.85, 0.85)) +
   labs(title="Comparing RT Distributions: Observed vs. Predicted", subtitle="Vertical lines are the distributions' medians", x="Response Time (ms)", y=NULL, fill=NULL) +
@@ -220,7 +239,71 @@ Using a cutoff of `r prettify(cutoff)` for the plotting, we're retaining `r perc
 
 ## Conclusions
 
-It's difficult to get a good feeling for what a reasonable overlap/correlation/RMSE is for the predicted vs. observed RTs. A couple of things that should be noted, though: The RMSE is higher than the median. That seems quite high. The predicted distribution looks more normal than the observed: Its median is right at its peak, whereas it is shifted to the right of the peak of the observed distribution. RT distributions are usually skewed like that, not normal -- might point towards a general problem with predicted RTs that result in a normal distribution?
+It's difficult to get a good feeling for what a reasonable overlap/correlation/RMSE is for the predicted vs. observed RTs. A couple of things that should be noted, though: The RMSE is higher than the median. That seems quite high. The mean absolute error (MAE), on the other hand, is much lower. Which makes sense looking at the hexbin plot above and the correlation coefficient: A lot of values are far off of the predicted values in these noisy data and squaring the errors in the RMSE puts a large penalty on those. 
+
+The predicted distribution looks more normal than the observed: Its median is right at its peak, whereas it is shifted to the right of the peak of the observed distribution. RT distributions are usually skewed like that, not normal -- might point towards a general problem with predicted RTs that result in a normal distribution?
+
+### Comparision with TopiCS data
+
+I'll handle the same criteria to subset the data/exclude RTs as above:
+
+```{r}
+mean(is.infinite(lab.data$estRT)) # RT on first encouter is Inf
+mean(lab.data$RT < RT.cutoff[1])
+mean(lab.data$RT > RT.cutoff[2]) # Not a single RT is higher than 60s!
+
+lab.data.RTsub <- subset(lab.data, RT > RT.cutoff[1] & RT < RT.cutoff[2] & !is.infinite(estRT))
+```
+
+After subsetting the data for observed RTs within the boundaries of `cutoff` and removing the `r percent(mean(is.infinite(lab.data$estRT)))` of trials in which the estimated RT is `Inf` (i.e., the first trial of an item), we are retaining `r percent(nrow(lab.data.RTsub)/nrow(lab.data))` of the data.
+
+Let have a look:
+
+```{r}
+# Compute the overlap between the distributions:
+tmp <- list(X1=lab.data.RTsub$RT, X2=lab.data.RTsub$estRT)
+olap.lab <- overlap(tmp) # compute overlap; percent is stored in $OV
+
+# Correlation between the values?
+corr <- cor(lab.data.RTsub$RT, lab.data.RTsub$estRT)
+
+## Prepare the plot
+# The tail will be very long, so I'll chop some of it off to make the visual presentation a bit nicer:
+dist.lab <- rbind(data.frame(x=lab.data.RTsub$RT, type="Observed"),
+              data.frame(x=lab.data.RTsub$estRT, type="Predicted"))
+
+cutoff <- 6*1000 # I'll set this much lower here because there aren't any extreme values
+retained <- mean(dist.lab$x < cutoff)
+dist.lab <- subset(dist.lab, x < cutoff)
+
+medians <- aggregate(x ~ type, dist.lab, median)
+
+rmse <- sqrt(mean((lab.data.RTsub$RT - lab.data.RTsub$estRT)^2))
+mae <- mean(abs(lab.data.RTsub$RT - lab.data.RTsub$estRT))
+
+# Make the plot:
+ggplot(dist.lab, aes(x, group=type)) + 
+  geom_density(aes(fill=type), alpha=.7, color=NA) +
+  # Add some text to the plot:
+  annotate("text", x=cutoff*.7 + 500, y=10/10000, label=paste("Overlap:", percent(olap.lab$OV)), hjust=0) +
+  annotate("text", x=cutoff*.7 + 500, y=7.5/10000, label=paste("r =", round(corr, 3)), hjust=0) +
+  annotate("text", x=cutoff*.7 + 500, y=5/10000, label=paste("RMSE =", prettify(round(rmse))), hjust=0) +
+  annotate("text", x=cutoff*.7 + 500, y=2.5/10000, label=paste("MAE =", prettify(round(mae))), hjust=0) +
+  geom_vline(data=medians, aes(xintercept=x, color=type), show.legend = FALSE) +
+  theme(legend.position = c(0.85, 0.85)) +
+  labs(title="TopiCS'16 Data: Observed vs. Predicted", subtitle="Vertical lines are the distributions' medians", x="Response Time (ms)", y=NULL, fill=NULL) +
+  scale_y_continuous(labels = NULL) +
+  scale_x_continuous(breaks = seq(0, cutoff, cutoff/6), labels = prettify(seq(0, cutoff, cutoff/6))) +
+  NULL
+```
+
+What's up with the distribution of predicted values? The range is generally much more narrow (`r paste(range(lab.data.RTsub$estRT), collapse=", ")`) than in the real world data but there is a huge peak that is very narrow. The majority of the predicted RTs seem to be within a couple of 100ms of the median. Note that the overlap of the distributions is actually *lower* in these data than in the real world data. The correlation is comparable and the errors are lower as well. But that seems to be mostly because the distributions are generally more narrow. 
+
+If we look at the estimated RTs separately for correct and incorrect responses, we can see that the second bump of faster RTs we see in the plot is associated with correct responses:
+
+```{r}
+ggplot(lab.data.RTsub, aes(estRT)) + geom_density(aes(fill=isCorrect), alpha=.6) + labs(title="Predicted RTs Only")
+```
 
 
 # Misc
