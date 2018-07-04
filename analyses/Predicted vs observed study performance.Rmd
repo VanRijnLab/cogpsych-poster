@@ -207,7 +207,7 @@ ggplot(dist, aes(x, group=type)) +
   annotate("text", x=cutoff*.5 + 500, y=1.5/10000, label=paste("RMSE =", prettify(round(rmse))), hjust=0) +
   geom_vline(data=medians, aes(xintercept=x, color=type), show.legend = FALSE) +
   theme(legend.position = c(0.85, 0.85)) +
-  labs(title="Comparing RT Distributions: Observed vs. Predicted", x="Response Time (ms)", y=NULL, fill=NULL) +
+  labs(title="Comparing RT Distributions: Observed vs. Predicted", subtitle="Vertical lines are the distributions' medians", x="Response Time (ms)", y=NULL, fill=NULL) +
   scale_y_continuous(labels = NULL) +
   scale_x_continuous(breaks = seq(0, cutoff, cutoff/6), labels = prettify(seq(0, cutoff, cutoff/6))) +
   NULL
