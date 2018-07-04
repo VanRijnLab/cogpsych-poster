@@ -55,16 +55,24 @@ dat <- dat %>%
 
 
 # Clean up data
+
+# Only include students who gave consent
 whitelist <- read_csv("data/whitelist.csv",
                       col_types = list(col_character(), col_character(), col_character()),
-                      col_names = c("time", "student_id", "student_email"),
+                      col_names = c("time", "user", "student_email"),
                       skip = 1) %>%
-  mutate(student_id = paste0("s", str_extract(student_id, "\\d+"))) %>%
-  pull(student_id) %>%
-  unique()
+  mutate(user = paste0("s", str_extract(user, "\\d+"))) %>%
+  select(user) %>%
+  unique() %>%
+  mutate(anon_id = fct_anon(as.factor(user), prefix = "anon-"))
 
-dat <- filter(dat, course_id %in% c("_287157_1", "_287240_1"), # Only keep trials from CogPsych courses (NL and EN)
-              user %in% whitelist)  %>% # Only keep trials from consenting users
+write_csv(whitelist, "data/student_numbers_to_anon_id_conversion.csv")
+
+
+dat <- filter(dat, course_id %in% c("_287157_1", "_287240_1")) %>% # Only keep trials from CogPsych courses (NL and EN)
+  inner_join(whitelist, by = "user") %>% # Only keep trials from consenting users
+  select(-user) %>% # Keep only anonymised ID in the data
+  rename(user = anon_id) %>%
   droplevels() # Remove unused factor levels
 
 
@@ -200,25 +208,119 @@ d_merged <- d_formatted %>%
 
 
 d <- d_merged %>%
-  select(course_id = courseId,
-         course,
-         user,
+  select(Course.ID = courseId,
+         Course = course,
+         User = user,
          session,
-         seq_num = sequenceNumber,
-         chapter_id = chapterId,
-         time,
-         fact_id = factId,
-         fact,
-         num_alternatives = numberOfAlternatives,
+         Sequence.Number = sequenceNumber,
+         Chapter.ID = chapterId,
+         Time = time,
+         factId,
+         Fact = fact,
+         Number.Of.Alternatives = numberOfAlternatives,
          repetition,
-         start_time = presentationStartTime,
-         rt = reactionTime,
+         presentationStartTime,
+         reactionTime,
          correct,
          activation,
-         estimated_alpha = estimatedAlpha,
-         estimated_rt = estimatedResponseTime) %>%
-  arrange(course_id, user, session, start_time)
+         estimatedAlpha,
+         estimatedResponseTime) %>%
+  arrange(Course.ID, User, session, presentationStartTime)
 
 
 save(d, file = "data/CogPsych_trial_data_full.Rdata")
   
+load("data/CogPsych_trial_data_full.Rdata")
+
+
+
+# Exam data
+
+# Some exam questions were part of the practice questions, so keep just those
+
+dict <- aggregate(Fact ~ factId + Chapter.ID, d, unique)
+
+key_phrases <- read.table(header = TRUE,
+text = "
+q_num key_phrase
+Q1  'looks within'
+Q3   'geons'
+Q5   'exceed some limit'
+Q8   'cycled'
+Q11  'misremembers'
+Q14  'event are influenced'
+Q16  'studying concepts'
+Q19  'constituent expressing'
+Q22  'by evaluating'
+Q25  'ability to deal'
+")
+
+key <- NULL
+
+for(i in 1:nrow(key_phrases)) {
+  row <- key_phrases[i,]
+  key <- rbind(key,
+               data.frame(exam = row$q_num,
+                          factId = subset(dict, grepl(row$key_phrase, Fact))$factId))
+}
+
+exam <- read_delim("data/exam first attempt grade center.csv", delim = ";") %>%
+  inner_join(whitelist, by = c("Username" = "user")) %>% # Keep only grades from students who gave consent
+  select(-Username, -`Last Name`, -`First Name`, -`Student ID`, -`Last Access`, -`Availability`) %>%
+  rename(Username = anon_id)
+
+students <- unique(exam$Username)
+
+
+exam.item <- NULL
+
+# Go through all students that took the exam and extract information question-by-question:
+for(student in students) {
+  for(Q in as.character(unique(key$exam))) {
+    # Did this student answer this question correctly on the exam?
+    # We'll only count it as correct if they got 2 out of 2 points for that item on the exam!
+    correct <- exam[which(exam$Username == student), which(grepl(paste0(Q, "\\b"), colnames(exam)))] == 2
+    
+    # Get all responses for this student that relate to this exam question:
+    IDs <- key$factId[key$exam == Q]
+    
+    # NOTE: Only do this for the people that gave informed consent!
+    filter(d, User == student)
+    this.Q <- subset(d, User == student & factId %in% IDs)
+    # this.Q <- subset(all.data, User == student & factId %in% IDs)
+    
+    if(nrow(this.Q) > 0) {
+      # There is data for this item-student pair
+      out <- c(student, Q, correct, nrow(this.Q), mean(this.Q$correct), 
+               # if item was repeated at least three times, include the final alpha value 
+               # (otherwise set alpha to NA)
+               ifelse(nrow(this.Q) >= 3, tail(this.Q$estimatedAlpha, 1), NA)) 
+    } else {
+      # This student did not study this item
+      out <- c(student, Q, correct, NA, NA, NA)
+    }
+    
+    exam.item <- rbind(exam.item, out)
+  }
+}
+
+exam.item <- as.data.frame(exam.item, stringsAsFactors = FALSE)
+colnames(exam.item) <- c("Username", "exam.Q", "correct.exam", "reps.study", "PC.study", "final.alpha")
+row.names(exam.item) <- NULL
+
+# Enforce variable types:
+exam.item$correct.exam <- as.logical(exam.item$correct.exam)
+exam.item$reps.study <- as.numeric(exam.item$reps.study)
+exam.item$PC.study <- as.numeric(exam.item$PC.study)
+exam.item$final.alpha <- as.numeric(exam.item$final.alpha)
+
+exam.item$studied <- factor( ifelse(is.na(exam.item$reps.study), "Not Studied", "Studied") )
+
+  
+## TODO: include grades df
+
+
+# Save to disk
+data <- d
+save(data, exam.item, file = "data/cogpsych_data_anon.Rdata")
+
