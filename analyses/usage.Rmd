@@ -111,7 +111,7 @@ usage_by_hour_of_doy <- d %>%
 ggplot(usage_by_hour_of_doy, aes(x = hour, y = days_until_exam)) +
   geom_tile(aes(fill = n)) +
   coord_equal() +
-  scale_fill_distiller(palette = "OrRd", direction = 1) +
+  scale_fill_distiller(palette = "YlOrRd", direction = 1) +
   scale_x_continuous(breaks = seq(0,23, by = 2)) +
   scale_y_reverse() +
   labs(x = "Hour of the day", y = "Days until exam", title = "Study frequency") +
@@ -137,7 +137,7 @@ usage_by_hour_of_day <- d %>%
 ggplot(usage_by_hour_of_day, aes(x = hour, y = weekday)) +
   geom_tile(aes(fill = n)) +
   coord_equal() +
-  scale_fill_distiller(palette = "OrRd", direction = 1) +
+  scale_fill_distiller(palette = "YlOrRd", direction = 1) +
   scale_x_continuous(breaks = c(0:23)) +
   labs(x = "Hour of the day", y = "Day of the week", title = "Study frequency") +
   guides(fill = guide_colourbar("Number of trials"))
@@ -154,7 +154,7 @@ This lets us see how learning is distributed within a day, but does not allow di
 ggplot(usage_by_hour_of_day, aes(x = hour, y = weekday)) +
   geom_tile(aes(fill = freq)) +
   coord_equal() +
-  scale_fill_distiller(palette = "OrRd", direction = 1) +
+  scale_fill_distiller(palette = "YlOrRd", direction = 1) +
   scale_x_continuous(breaks = c(0:23)) +
   labs(x = "Hour of the day", y = "Day of the week", title = "Study frequency") +
   guides(fill = FALSE)
@@ -162,4 +162,31 @@ ggplot(usage_by_hour_of_day, aes(x = hour, y = weekday)) +
 
 
 
-# Session duration
+# Session length
+
+## Number of trials
+
+The histogram below shows that there is a narrow peak close to zero (users who start a session and immediately stop) and a wider peak to its right.
+```{r}
+session_length <- data %>% 
+  group_by(User, session) %>%
+  summarise(duration = (max(presentationStartTime) - min(presentationStartTime)) / (60 * 1000),
+            trials = n())
+
+ggplot(session_length, aes(x = trials)) +
+  geom_histogram(binwidth = 5, colour = "black", fill = NA) +
+  labs(x = "Session length (trials)")
+```
+
+## Duration
+
+Users can specify beforehand how long their session should be.
+Some session durations stand out in the histogram, in particular 8 minutes (the default duration) and 5 minutes, but there are also distinct peaks at multiples of 8 (16, 24, 32, 40) and multiples of 10 (10, 20, 30).
+This regularity suggests that users have a tendency to finish a session once they have started.
+```{r}
+ggplot(session_length, aes(x = duration)) +
+  geom_histogram(binwidth = 1, colour = "black", fill = NA) +
+  labs(x = "Session duration (minutes)")
+
+```
+
