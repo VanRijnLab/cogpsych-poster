@@ -1,0 +1,271 @@
+---
+title: "Does it work? Performance on the exam"
+author: '[Florian Sense](f.sense@rug.nl)'
+date: 'July 2018 -- last compiled: `r Sys.time()`'
+output: 
+  html_document:
+    toc: true
+---
+
+# Goal
+
+We want to get a global overview of whether (1) studying with the system improves performance on (a) the exam as a whole and (b) individual exam questions that were studied or not. Additionally, we'd like to know whether (2) usage statistics and model estimates can predict performance (for both (a) and (b) again).
+
+```{r}
+library(BayesFactor)
+library(ggplot2)
+theme_set(theme_minimal())
+
+# For regression models:
+library(lme4)
+
+load(file.path("..", "data", "cogpsych_data_anon.Rdata"))
+figures.folder <- "figures for ICCM poster"
+```
+
+```{r, echo=FALSE}
+# Helper functions
+inv.logit <- function(x) {
+  # To convert glmer output
+  return( exp(x)/(1+exp(x)) )
+} 
+
+percent <- function(X, digits=1) {
+  # convert a proportion to percent and return as string with % sign.
+  return( paste0(format(round(X*100, digits), nsmall=digits), "%") )
+}
+
+prettify <- function(X) {
+  # Just to save myself some typing:
+  return( prettyNum(X, big.mark = ",") )
+}
+```
+
+
+# Does studying with the system improve exam performance?
+
+## Final grade on the exam
+
+```{r}
+grades$usedRL <- ifelse(grades$User %in% data$User, "Used RUGged Learning", "Didn't use RUGged Learning")
+
+bf.alt <- round( as.vector(ttestBF(formula=Grade ~ usedRL, data=grades)) , 2)
+
+grand.means <- aggregate(Grade ~ usedRL, grades, mean) # Globally
+Ns <- data.frame(N = table(grades$usedRL), median = aggregate(Grade ~ usedRL, grades, median)$Grade)
+
+ggplot(grades, aes(x=usedRL, y=Grade)) + 
+  # geom_violin(scale="count", draw_quantiles = c(.25, .5, .75)) +
+  geom_boxplot(width=.25, aes(fill=usedRL), show.legend = FALSE) +
+  annotate("text", x=1:2, y=10.5, label=paste("N =", Ns$N.Freq)) + scale_y_continuous(breaks=1:10) +
+  labs(x=NULL, y="Exam Grade on First Attempt") +
+  NULL
+```
+
+Note that these distributions are quite imbalanced: Only `r table(grades$usedRL)[1]` of the students that gave informed consent did not use the system at all (`r percent(table(grades$usedRL)[1] / nrow(grades))`). The mean grade for those students is `r round(grand.means$Grade[1], 2)` compared with a mean grade of `r round(grand.means$Grade[2], 2)` for the `r table(grades$usedRL)[2]` students that did use the system. Given the small sample size for one of the groups, this overall difference should be interpreted with caution, though.
+
+## Individual items on the exam
+
+To gain a bit more insight, we can zoom in on the individual exam questions. The vast majority of the students did you use the system, which makes the comparison above extremely imbalanced. Even the people that did use RL, however, did not (necessarily) see *all* the items. This allows us to split, even within a person, the performance on the exam between those that did see the items and those that did not. So what I'll do is compute the proportion correct on the exam separately for each student: one for the items that they did study (if any) and one for the items they did not study.
+
+```{r}
+grand.means <- aggregate(correct.exam ~ studied, exam.item, mean) # Globally
+
+exam.per.student <- aggregate(correct.exam ~ Username + studied, exam.item, mean)
+exam.per.student$count <- aggregate(correct.exam ~ Username + studied, exam.item, length)$correct.exam
+
+Ns <- data.frame(N = table(exam.per.student$studied), Y = rep(1.1, 2))
+
+pj <- position_jitter(width=.1, height = 0)
+
+ggplot(exam.per.student, aes(studied, correct.exam)) + 
+  # geom_violin(scale="count") + 
+  geom_boxplot(width=.25, outlier.color = NA, color="gray") +
+  # geom_line(aes(group=Username), color="lightgrey", alpha=.5, position=pj) +
+  geom_point(aes(color=studied, size=count), alpha=.5, position=pj) +
+  geom_segment(aes(x = 1, y = grand.means$correct.exam[1], xend = 1.5, yend = grand.means$correct.exam[1]), color="darkgrey") + 
+  geom_segment(aes(x = 1.5, y = grand.means$correct.exam[2], xend = 2, yend = grand.means$correct.exam[2]), color="darkgrey") +
+  geom_point(data=grand.means, size=5) + 
+  annotate("text", x=1:2, y=Ns$Y, label=paste("N =", Ns$N.Freq)) +
+  scale_y_continuous(breaks=seq(0, 1, .2)) +
+  annotate("label", x=c(1.5, 1.5), y=grand.means$correct.exam, label=format(round(grand.means$correct.exam, 3), nsmall=3), size=3) +
+  labs(x=NULL, y="Proportion correct on exam on subset of items", size=NULL) +
+  scale_colour_discrete(guide = FALSE) +
+  NULL
+
+# ggsave(file.path(figures.folder, "Proportion correct on exam f(studied).pdf"), width = 5, height = 4)
+```
+
+The size of the points indicates the number of observations the proportion is based on, smaller points correspond to fewer observations.
+
+What we see here is that of the `r sum(grades$usedRL == "Used RUGged Learning")` students that used RL to study, only `r Ns$N.Freq[2]` studied at least one item that appeared on the exam. Conversely, while there only `r sum(!grades$usedRL == "Used RUGged Learning")` students that didnt't use RL at all, there are `r Ns$N.Freq[1]` students that didn't see a single item that appeared on the exam (either because they didn't use RL or because they just didn't encounter any of those items).
+
+The main conclusion here is thae the proportion is much higher for the items that were studied.
+
+One quick check we might want to do is plot the same but only for proportions that are based on at least `x` values:
+
+```{r}
+x <- 2
+ggplot(subset(exam.per.student, count >= x), aes(studied, correct.exam)) + 
+  geom_boxplot(width=.25, outlier.color = NA, color="gray") +
+  geom_point(aes(color=studied, size=count), alpha=.5, position=position_jitter(width=.1, height = 0)) +
+  NULL
+```
+
+Setting `x` to 1, 2, or 3 (or even 4) doesn't change the overall pattern at all. This suggests that the results we see above are not simply due to extreme values at 0 or 1 driven by single items (i.e, a student that has only studied one item that appeared on the exam and got one correct/incorrect)
+
+
+
+### Studied vs. not studied
+
+We can run a range of analyses here.
+
+```{r}
+summary(m.stu <- glmer(correct.exam ~ studied + (1|Username) + (1|exam.Q), exam.item, family = "binomial"))
+```
+
+The simple approach: Is the probability of answering an item correctly higher if an item has been studied. The answer is yes: the estimated probability is `r percent(inv.logit(coef(m.stu)[1]))` of items that were not studied and `r percent(inv.logit(sum(coef(m.stu))))` for those that were. Note that these correspond very closely with the mean proportions in the plot above.
+
+
+```{r}
+# Just to compare:
+m.stu.noRE <- glm(correct.exam ~ studied, exam.item, family = "binomial")
+anova(m.stu, m.stu.noRE) # model with random effects is A LOT better (no surprise here...)
+```
+
+### Subset of items that were studied: effects of usage stats/perf measures.
+
+```{r}
+# Note that subsetting the data is not really necessary (glmer will drop the NA rows anyways)
+# But: some alpha values are NA (because reps < 3), so I'll subset the data to make sure we fit all models on the same data so they can be compared directly:
+exam.item.studied <- subset(exam.item, !is.na(final.alpha))
+
+# There are also a couple of missing values for the exam:
+exam.item.studied <- subset(exam.item.studied, !is.na(correct.exam))
+```
+
+We have a number of performance measures/usage statistics that we're interested in. These are derived from the adaptive system and are therefore only available for items that were studied. Therefore, we will now focus only on the subset of items that were studied and test the potential effects of the information we have on the probability of answering an item correctly on the exam. We will also include random effects for both `Username` and `exam.Q`, reflecting the assumption that not all students are equally good and not all questions are equally difficult.
+
+Note that two of the predictors are not normally distributed: the proportion correct can only range from 0 to 1 and there's a clear ceiling effect. Many of them are 1 as well, though, which will yield `Inf` using a logit-transformation. No other transformation I tried yields any sensible results so I'll just use the data as it is:
+
+```{r}
+ggplot(exam.item.studied, aes(PC.study)) + geom_density() + labs(title="Raw data: Proportion correct during study")
+```
+
+The other predictor that might be problematic is the number of repetitions during study. The reps are highly skewed but a log-transformation seems to work well:
+
+```{r}
+ggplot(exam.item.studied, aes(reps.study)) + geom_density() + labs(title="Raw data: Repitions during study")
+
+# Logit transformation yields more reasonable results:
+exam.item.studied$reps.log <- log(exam.item.studied$reps.study)
+
+ggplot(exam.item.studied, aes(reps.log)) + geom_density() + labs(title="Log-transformed data: Repitions during study")
+```
+
+I'll simply normalize the estimated alpha parameter, they look fine other than the "harmonic bumps" that are an artefact of the step-wise adjustment:
+
+```{r}
+exam.item.studied$alpha.N <- scale(exam.item.studied$final.alpha)
+
+ggplot(exam.item.studied, aes(alpha.N)) + geom_density() + labs(title="Normalized final alpha values")
+```
+
+Now we can fit the model:
+
+```{r}
+# Start with full:
+summary(m.full <- glmer(correct.exam ~ 1 + alpha.N * reps.log * PC.study + (1|Username) + (1|exam.Q), exam.item.studied, family = "binomial")) 
+
+# adding control=glmerControl(optimizer="bobyqa",optCtrl=list(maxfun=2e5)) doesn't help convergence either
+```
+
+The model doesn't converge properly. Note that some of the fixed effects are highly correlated, suggesting issues with multicollinearity (specifically `PC.study` and `reps.log`). This makes it difficult to interpret these results. I'll try and remove these two and see what the models look like:
+
+```{r}
+summary(m.noReps <- glmer(correct.exam ~ 1 + alpha.N * PC.study + (1|exam.Q), exam.item.studied, family = "binomial")) 
+```
+
+This model converges with no problems and suggests that none of the predictors are significant. What does the other one look like?
+
+```{r}
+summary(m.noPC <- glmer(correct.exam ~ 1 + alpha.N * reps.log + (1|Username) + (1|exam.Q), exam.item.studied, family = "binomial")) 
+
+# The interaction is not significant, remove it:
+summary(m.noPC.noX <- glmer(correct.exam ~ 1 + alpha.N + reps.log + (1|Username) + (1|exam.Q), exam.item.studied, family = "binomial")) 
+```
+
+Both predictors are significant. Note, however, that `alpha` is not significant if `reps` is removed from the model.
+
+The issue is probably that the majorify of the variance is already captured by the random effects included in the model. If those are removed and we fit a simple logistic regression instead, `alpha` *is* a significant predictor:
+
+```{r}
+summary(m.alpha <- glm(correct.exam ~ 1 + alpha.N, exam.item.studied, family = "binomial")) 
+```
+
+The model that includes only `reps` is also signficiant but the effect of `reps` actually becomes larger if the random effects are added. 
+
+
+### Visualization
+
+I'll use the model that includes both the `reps` and `final.alpha` to generate some model predictions that I can plot as a way to visualize the effects captured by the best-fitting model.
+
+```{r}
+# Refit the model with with alpha on the original scale:
+m.noPC.noX.realAlpha <- glmer(correct.exam ~ 1 + final.alpha + reps.log + (1|Username) + (1|exam.Q), exam.item.studied, family = "binomial")
+
+probs <- seq(.1, .9, .1)
+# new.data <- data.frame(alpha.N = rep(quantile(exam.item.studied$alpha.N, probs = probs), each=length(probs)),
+#                        reps.log = rep(quantile(exam.item.studied$reps.log, probs = probs), length(probs)))
+# 
+# new.data$pred <- predict(m.noPC.noX, newdata=new.data, re.form=NA)
+new.data <- data.frame(final.alpha = rep(quantile(exam.item.studied$final.alpha, probs = probs), each=length(probs)),
+                       reps.log = rep(quantile(exam.item.studied$reps.log, probs = probs), length(probs)))
+
+new.data$pred <- predict(m.noPC.noX.realAlpha, newdata=new.data, re.form=NA)
+
+# Convert to original scales:
+new.data$pred.prop <- inv.logit(new.data$pred)
+new.data$reps <- exp(new.data$reps.log)
+
+ggplot(new.data, aes(reps, pred.prop, group=final.alpha)) + 
+  # geom_line(aes(color=factor(alpha.N))) + 
+  # geom_point(aes(color=factor(alpha.N)), size=3) + 
+  geom_line(aes(color=final.alpha)) + 
+  geom_point(aes(color=final.alpha), size=3) + 
+  labs(x="\nRepetitions of an item", y=NULL, title="Predicted probability of answering an item correctly", color="Alpha:", subtitle="Predictions of best-fitting model for 10 to 90% quantiles of empirical data") + 
+  scale_x_continuous(breaks = unique(new.data$reps), labels = round(unique(new.data$reps), 1)) +
+  ylim(.5, 1) + 
+  theme(legend.position = c(.9, .3)) +
+  # scale_color_continuous(guide = guide_legend(label.theme = element_text(angle=30))) +
+  # scale_color_brewer(palette="Set1") +
+  NULL
+
+# ggsave(file.path(figures.folder, "Pred prop correct f(reps, alpha).pdf"), width = 5, height = 4)
+```
+
+This shows nicely that more repetitions lead to a higher probability of answering an item correctly. It also shows that the differences in alpha values between people have a larger effect than the numer of repetitions. The scales are very different, of course, and it's a bit hard to visualize it in a way that is easier to interpret.
+
+Alternatively, we can predict for all values and then plot a heatmap-type thingy:
+
+```{r}
+exam.item.studied$pred <- predict(m.noPC.noX)
+exam.item.studied$pred.prop <- inv.logit(exam.item.studied$pred)
+
+library(hexbin) # for stat_hexbin()
+ggplot(exam.item.studied, aes(alpha.N, reps.log)) + geom_point(aes(color=pred.prop), size=3, alpha=.6)
+```
+
+
+## Conclusions
+
+Both the number of repetitions and the final alpha parameter associated with each item are signicifant predictors of whether that item will be answered correctly on the exam.
+
+
+
+# Misc
+
+```{r}
+sessionInfo()
+```
+
