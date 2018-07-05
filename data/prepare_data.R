@@ -1,6 +1,9 @@
 #!/usr/bin/env Rscript
 #
 #
+# Usage: Rscript prepare_data.R
+#
+#
 # This script does the following:
 # 
 # - Read in one or more raw data files exported from RuggedLearning;
@@ -10,7 +13,8 @@
 # - Anonymise participants;
 # - Mark the learning session boundaries;
 # - Estimate the model parameters (alpha, estimated activation, estimated RT).
-# - Combine learning data and exam data in a single data file
+# - Combine learning data, exam data, and final course grades in a single data file (cogpsych_data_anon.Rdata)
+#
 
 library(dplyr)
 library(purrr)
@@ -40,18 +44,12 @@ message(paste(nrow(dat), "observations in total."))
 
 # Clean up columns
 dat <- dat %>%
-  mutate(course_id = `Course ID`,
-         course = `Course`,
-         chapter_id = `Chapter ID`,
-         chapter = `Chapter`,
-         fact_id = `Fact ID`,
-         fact = `Fact`,
-         user = `User`,
-         sequence_number = `Sequence Number`,
-         time = `Time`,
-         alternatives = `Number of Alternatives`,
-         data = `Data`) %>%
-  select(course_id, course, user, chapter_id, chapter, sequence_number, fact_id, fact, time, alternatives, data)
+  mutate(Course.ID = `Course ID`,
+         Chapter.ID = `Chapter ID`,
+         factId = `Fact ID`,
+         Sequence.Number = `Sequence Number`,
+         Number.Of.Alternatives = `Number of Alternatives`) %>%
+  select(Course.ID, Course, User, Chapter.ID, Chapter, Sequence.Number, factId, Fact, Time, Number.Of.Alternatives, Data)
 
 
 # Clean up data
@@ -59,25 +57,25 @@ dat <- dat %>%
 # Only include students who gave consent
 whitelist <- read_csv("data/whitelist.csv",
                       col_types = list(col_character(), col_character(), col_character()),
-                      col_names = c("time", "user", "student_email"),
+                      col_names = c("Time", "User", "Email"),
                       skip = 1) %>%
-  mutate(user = paste0("s", str_extract(user, "\\d+"))) %>%
-  select(user) %>%
+  mutate(User = paste0("s", str_extract(User, "\\d+"))) %>%
+  select(User) %>%
   unique() %>%
-  mutate(anon_id = fct_anon(as.factor(user), prefix = "anon-"))
+  mutate(Anon.ID = fct_anon(as.factor(User), prefix = "anon-"))
 
 write_csv(whitelist, "data/student_numbers_to_anon_id_conversion.csv")
 
 
-dat <- filter(dat, course_id %in% c("_287157_1", "_287240_1")) %>% # Only keep trials from CogPsych courses (NL and EN)
-  inner_join(whitelist, by = "user") %>% # Only keep trials from consenting users
-  select(-user) %>% # Keep only anonymised ID in the data
-  rename(user = anon_id) %>%
+dat <- filter(dat, Course.ID %in% c("_287157_1", "_287240_1")) %>% # Only keep trials from CogPsych courses (NL and EN)
+  inner_join(whitelist, by = "User") %>% # Only keep trials from consenting users
+  select(-User) %>% # Keep only anonymised ID in the data
+  rename(User = Anon.ID) %>%
   droplevels() # Remove unused factor levels
 
 
 # Unpack JSON data stored in data column
-json_data <- map_df(dat$data, function(x) {
+json_data <- map_df(dat$Data, function(x) {
   d <- fromJSON(x)
   if(is.null(d[[2]])) { # Replace NULL RT with NA so that it can be parsed as integer
     d[[2]] <- NA
@@ -87,16 +85,14 @@ json_data <- map_df(dat$data, function(x) {
 
 # Add columns extracted from JSON to the data frame
 d <- bind_cols(dat, json_data) %>%
-  select(-data) %>%
-  rename(start_time = presentationStartTime,
-         rt = reactionTime)
+  select(-Data)
 
 rm(dat, json_data)
 
 
 # Filter out duplicate observations (only keep the first)
 d <- d %>%
-  group_by(user, start_time) %>%
+  group_by(User, presentationStartTime) %>%
   slice(1) %>%
   ungroup()
 
@@ -106,49 +102,47 @@ message(paste(nrow(d), "observations from consenting participants in CogPsych co
 # Estimate session boundaries
 # The beginning and end of a session are not marked in the data, so we must estimate when one session ends and a new one begins.
 
-# We declare the start of a new session whenever the difference in start_time between two consecutive trials is at least 1 minute higher than the RT on the first trial.
+# We declare the start of a new session whenever the difference in presentationStartTime between two consecutive trials is at least 1 minute higher than the RT on the first trial.
 session_lag_boundary <- 1 * 60 * 1000
 
 d <- d %>%
-  group_by(user) %>%
-  arrange(start_time) %>%
-  filter(start_time - (lag(start_time) + lag(rt)) >= session_lag_boundary | user != lag(user) | chapter_id != lag(chapter_id)) %>%
+  group_by(User) %>%
+  arrange(presentationStartTime) %>%
+  filter(presentationStartTime - (lag(presentationStartTime) + lag(reactionTime)) >= session_lag_boundary | User != lag(User) | Chapter.ID != lag(Chapter.ID)) %>%
   mutate(session = 1:n() + 1) %>%
-  right_join(d, by = c("course_id", "course", "user", "chapter_id", "chapter", "sequence_number", "fact_id", "fact", "time", "alternatives", "start_time", "rt", "correct")) %>%
+  right_join(d, by = c("Course.ID", "Course", "User", "Chapter.ID", "Chapter", "Sequence.Number", "factId", "Fact", "Time", "Number.Of.Alternatives", "presentationStartTime", "reactionTime", "correct")) %>%
   fill(session) %>%
   ungroup() %>%
   mutate(session = if_else(is.na(session), 1, session))
 
 session_stats <- d %>%
-  distinct(user, session)
-message(paste("Data contains", nrow(session_stats), "learning sessions from", n_distinct(session_stats$user), "users."))
+  distinct(User, session)
+message(paste("Data contains", nrow(session_stats), "learning sessions from", n_distinct(session_stats$User), "users."))
 
 
 # Keep track of repetition of each fact within a session
 d <- d %>%
-  group_by(user, session, fact_id) %>%
-  arrange(start_time) %>%
+  group_by(User, session, factId) %>%
+  arrange(presentationStartTime) %>%
   mutate(repetition = 1:n()) %>%
   ungroup()
 
 
 # Prepare data for Javascript app that estimates model parameters
 d_formatted <- d %>%
-  mutate(rt = if_else(is.na(rt), "null", as.character(rt))) %>% # Change NA to "null" so that JS recognises it correctly
-  mutate(sequenceNumber = sequence_number,
+  mutate(reactionTime = if_else(is.na(reactionTime), "null", as.character(reactionTime))) %>% # Change NA to "null" so that JS recognises it correctly
+  mutate(user = User,
+         sequenceNumber = Sequence.Number,
          modelName = NA,
-         factId = fact_id,
-         fact = fact,
-         presentationStartTime = start_time,
-         reactionTime = rt,
+         fact = Fact,
          correct = as.integer(correct),
-         chapterId = chapter_id,
-         numberOfAlternatives = alternatives,
-         time = time,
-         user = user,
-         courseId = course_id,
+         chapterId = Chapter.ID,
+         numberOfAlternatives = Number.Of.Alternatives,
+         time = Time,
+         courseId = Course.ID,
+         course = Course,
          data = paste0("{\"presentationStartTime\":", presentationStartTime, ",\"reactionTime\":", reactionTime, ",\"factId\":\"", factId, "\",\"correct\":", correct, "}")) %>%
-  select(user, sequenceNumber, modelName, fact, factId, data, chapterId, numberOfAlternatives, time, user, courseId, course, session, repetition) %>%
+  select(user, sequenceNumber, modelName, fact, factId, data, chapterId, numberOfAlternatives, time, courseId, course, session, repetition) %>%
   collect() %>%
   arrange(user, factId, sequenceNumber)
 
@@ -197,6 +191,7 @@ outputdat <- bind_rows(outputdat) %>%
   mutate(chapterId = as.factor(chapterId),
          user = as.factor(user),
          factId = as.factor(factId)) %>%
+  # rename(User = user) %>%
   select(-modelName)
 
 d_merged <- d_formatted %>%
@@ -208,9 +203,9 @@ d_merged <- d_formatted %>%
 
 
 d <- d_merged %>%
-  select(Course.ID = courseId,
+  select(User = user,
+         Course.ID = courseId,
          Course = course,
-         User = user,
          session,
          Sequence.Number = sequenceNumber,
          Chapter.ID = chapterId,
@@ -226,12 +221,6 @@ d <- d_merged %>%
          estimatedAlpha,
          estimatedResponseTime) %>%
   arrange(Course.ID, User, session, presentationStartTime)
-
-
-save(d, file = "data/CogPsych_trial_data_full.Rdata")
-  
-load("data/CogPsych_trial_data_full.Rdata")
-
 
 
 # Exam data
@@ -265,9 +254,9 @@ for(i in 1:nrow(key_phrases)) {
 }
 
 exam <- read_delim("data/exam first attempt grade center.csv", delim = ";") %>%
-  inner_join(whitelist, by = c("Username" = "user")) %>% # Keep only grades from students who gave consent
+  inner_join(whitelist, by = c("Username" = "User")) %>% # Keep only grades from students who gave consent
   select(-Username, -`Last Name`, -`First Name`, -`Student ID`, -`Last Access`, -`Availability`) %>%
-  rename(Username = anon_id)
+  rename(Username = Anon.ID)
 
 students <- unique(exam$Username)
 
@@ -317,10 +306,16 @@ exam.item$final.alpha <- as.numeric(exam.item$final.alpha)
 exam.item$studied <- factor( ifelse(is.na(exam.item$reps.study), "Not Studied", "Studied") )
 
   
-## TODO: include grades df
+
+# Final grades
+
+grades <- read.table("data/CogPsy-grades-1718.txt", header = TRUE) %>%
+  inner_join(whitelist, by = "User") %>% # Only keep trials from consenting users
+  mutate(User = as.character(Anon.ID)) %>%
+  select(User, Grade) # Keep only anonymised ID in the data
 
 
 # Save to disk
 data <- d
-save(data, exam.item, file = "data/cogpsych_data_anon.Rdata")
+save(data, exam.item, grades, file = "data/cogpsych_data_anon.Rdata")
 
