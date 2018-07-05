@@ -103,12 +103,19 @@ message(paste(nrow(d), "observations from consenting participants in CogPsych co
 # The beginning and end of a session are not marked in the data, so we must estimate when one session ends and a new one begins.
 
 # We declare the start of a new session whenever the difference in presentationStartTime between two consecutive trials is at least 1 minute higher than the RT on the first trial.
+# In cases where RT is missing (because the user erased their whole answer) we use the user's median RT in its place.
+# In cases where the lag between the response and the start of the next trial is small, but the previous RT is very large
+# (e.g. when only responding to a prompt after a long period of inactivity and then continuing) we also draw a session boundary
 session_lag_boundary <- 1 * 60 * 1000
+session_rt_boundary <- 5 * 60 * 1000
 
 d <- d %>%
   group_by(User) %>%
   arrange(presentationStartTime) %>%
-  filter(presentationStartTime - (lag(presentationStartTime) + lag(reactionTime)) >= session_lag_boundary | User != lag(User) | Chapter.ID != lag(Chapter.ID)) %>%
+  filter(presentationStartTime - (lag(presentationStartTime) + if_else(is.na(lag(reactionTime)), as.integer(median(reactionTime, na.rm = TRUE)), lag(reactionTime))) >= session_lag_boundary |
+           if_else(is.na(lag(reactionTime)),  as.integer(median(reactionTime, na.rm = TRUE)), lag(reactionTime)) >= session_rt_boundary |
+           User != lag(User) |
+           Chapter.ID != lag(Chapter.ID)) %>%
   mutate(session = 1:n() + 1) %>%
   right_join(d, by = c("Course.ID", "Course", "User", "Chapter.ID", "Chapter", "Sequence.Number", "factId", "Fact", "Time", "Number.Of.Alternatives", "presentationStartTime", "reactionTime", "correct")) %>%
   fill(session) %>%
