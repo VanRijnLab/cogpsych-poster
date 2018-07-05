@@ -124,7 +124,7 @@ We can run a range of analyses here.
 summary(m.stu <- glmer(correct.exam ~ studied + (1|Username) + (1|exam.Q), exam.item, family = "binomial"))
 ```
 
-The simple approach: Is the probability of answering an item correctly higher if an item has been studied. The answer is yes: the estimated probability is `r percent(inv.logit(coef(m.stu)[1]))` of items that were not studied and `r percent(inv.logit(sum(coef(m.stu))))` for those that were. Note that these correspond very closely with the mean proportions in the plot above.
+The simple approach: Is the probability of answering an item correctly higher if an item has been studied. The answer is yes: the estimated probability is `r percent(inv.logit(fixef(m.stu)[1]))` of items that were not studied and `r percent(inv.logit(sum(fixef(m.stu))))` for those that were. Note that these correspond very closely with the mean proportions in the plot above. The model below (without REs) should be even closer to those numbers:
 
 
 ```{r}
@@ -132,6 +132,8 @@ The simple approach: Is the probability of answering an item correctly higher if
 m.stu.noRE <- glm(correct.exam ~ studied, exam.item, family = "binomial")
 anova(m.stu, m.stu.noRE) # model with random effects is A LOT better (no surprise here...)
 ```
+
+Based on the model without random effects, the estimated probability is `r percent(inv.logit(coef(m.stu.noRE)[1]))` of items that were not studied and `r percent(inv.logit(sum(coef(m.stu.noRE))))` for those that were. (Which are the exact numbers that we see in the plot.)
 
 ### Subset of items that were studied: effects of usage stats/perf measures.
 
