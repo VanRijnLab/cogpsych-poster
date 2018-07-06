@@ -210,37 +210,39 @@ The model that includes only `reps` is also signficiant but the effect of `reps`
 
 ### Visualization
 
-I'll use the model that includes both the `reps` and `final.alpha` to generate some model predictions that I can plot as a way to visualize the effects captured by the best-fitting model.
+I'll use the model that includes both the `reps` and `final.alpha` to generate some model predictions that I can plot as a way to visualize the effects captured by the best-fitting model. I'll take a look at the distribution of the two predictors to identify a range of values that can be predicted using the model:
 
 ```{r}
-# Refit the model with with alpha on the original scale:
-m.noPC.noX.realAlpha <- glmer(correct.exam ~ 1 + final.alpha + reps.log + (1|Username) + (1|exam.Q), exam.item.studied, family = "binomial")
+alpha.points <- seq(-2, 2, 0.25)
+ggplot(exam.item.studied, aes(alpha.N)) + geom_density() + geom_vline(xintercept = alpha.points, color="orange") + labs(title="Points to be predicted for alpha.N with on original distribution")
 
-probs <- seq(.1, .9, .1)
-# new.data <- data.frame(alpha.N = rep(quantile(exam.item.studied$alpha.N, probs = probs), each=length(probs)),
-#                        reps.log = rep(quantile(exam.item.studied$reps.log, probs = probs), length(probs)))
-# 
-# new.data$pred <- predict(m.noPC.noX, newdata=new.data, re.form=NA)
-new.data <- data.frame(final.alpha = rep(quantile(exam.item.studied$final.alpha, probs = probs), each=length(probs)),
-                       reps.log = rep(quantile(exam.item.studied$reps.log, probs = probs), length(probs)))
+reps.points <- seq(1.2, 3.8, .2)
+ggplot(exam.item.studied, aes(reps.log)) + geom_density() + geom_vline(xintercept = reps.points, color="orange") + labs(title="Points to be predicted for reps.log on original distribution")
+```
 
-new.data$pred <- predict(m.noPC.noX.realAlpha, newdata=new.data, re.form=NA)
+We can use these points to generate a new data set for which to make predictions using the best-fitting model. Note that we'll not include the random effects in these predictions to simplify the visual presentation and interpretation of the overall patterns:
+
+```{r}
+new.data <- data.frame(alpha.N = rep(alpha.points, each = length(reps.points)),
+                       reps.log = rep(reps.points, times = length(alpha.points)))
+
+new.data$pred <- predict(m.noPC.noX, newdata=new.data, re.form=NA) # make model predictions w/o random effects
 
 # Convert to original scales:
 new.data$pred.prop <- inv.logit(new.data$pred)
 new.data$reps <- exp(new.data$reps.log)
 
-ggplot(new.data, aes(reps, pred.prop, group=final.alpha)) + 
+ggplot(new.data, aes(reps, pred.prop, group=alpha.N)) + 
   # geom_line(aes(color=factor(alpha.N))) + 
   # geom_point(aes(color=factor(alpha.N)), size=3) + 
-  geom_line(aes(color=final.alpha)) + 
-  geom_point(aes(color=final.alpha), size=3) + 
-  labs(x="\nRepetitions of an item", y=NULL, title="Predicted probability of answering an item correctly", color="Alpha:", subtitle="Predictions of best-fitting model for 10 to 90% quantiles of empirical data") + 
+  geom_line(aes(color=alpha.N)) + 
+  geom_point(aes(color=alpha.N), size=3, alpha=.9) + 
+  labs(x="\nRepetitions of an item (re-transformed from log-scale)", y="Predicted probability of\nanswering an item correctly", color="Normalized alpha:") + 
   scale_x_continuous(breaks = unique(new.data$reps), labels = round(unique(new.data$reps), 1)) +
-  ylim(.5, 1) + 
-  theme(legend.position = c(.9, .3)) +
-  # scale_color_continuous(guide = guide_legend(label.theme = element_text(angle=30))) +
-  # scale_color_brewer(palette="Set1") +
+  theme(legend.direction = "horizontal") +
+  theme(legend.position = c(.6, .1)) +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=7)) +
+  theme(axis.text.y = element_text(size=7)) +
   NULL
 
 # ggsave(file.path(figures.folder, "Pred prop correct f(reps, alpha).pdf"), width = 5, height = 4)
@@ -254,9 +256,11 @@ Alternatively, we can predict for all values and then plot a heatmap-type thingy
 exam.item.studied$pred <- predict(m.noPC.noX)
 exam.item.studied$pred.prop <- inv.logit(exam.item.studied$pred)
 
-library(hexbin) # for stat_hexbin()
+# library(hexbin) # for stat_hexbin()
 ggplot(exam.item.studied, aes(alpha.N, reps.log)) + geom_point(aes(color=pred.prop), size=3, alpha=.6)
 ```
+
+I think this plot is a bit harder to read. Including the REs makes this a lot messier. I prefer the previous one for the poster.
 
 
 ## Conclusions
