@@ -63,7 +63,7 @@ ggplot(usage_by_doy, aes(x = doy, y = n / 1000)) +
   scale_x_date(date_breaks = "1 month", date_labels = "%b %Y") +
   labs(x = "Date", y = "Number of trials (x 1000)") +
   geom_vline(xintercept = c(rl_available_date, exam_date, resit_date), lty = "dotted") +
-  annotate("label", x = c(rl_available_date, exam_date, resit_date), y = 40, label = c("Start", "Exam", "Resit"))
+  annotate("label", x = c(rl_available_date, exam_date, resit_date), y = 50, label = c("Start", "Exam", "Resit"))
 
 
 # Day of course
@@ -72,7 +72,7 @@ ggplot(usage_by_doy, aes(x = day_of_course , y = n / 1000)) +
   scale_x_continuous() +
   labs(x = "Day of course", y = "Number of trials (x 1000)") +
   geom_vline(xintercept = c(rl_available_date - start_date, exam_date - start_date, resit_date - start_date), lty = "dotted") +
-  annotate("label", x = c(rl_available_date - start_date, exam_date - start_date, resit_date - start_date), y = 40, label = c("Start", "Exam", "Resit"))
+  annotate("label", x = c(rl_available_date - start_date, exam_date - start_date, resit_date - start_date), y = 50, label = c("Start", "Exam", "Resit"))
 
 ```
 
@@ -125,6 +125,7 @@ ggplot(usage_by_hour_of_doy, aes(x = hour, y = days_until_exam)) +
 
 The plot below shows the absolute number of study trials per hour of the day, summed over the entire duration of the course.
 This plot shows which moments during the week are the most popular for studying (but it does not show variance between weeks).
+The leadup to the exam is also clearly visible (Tuesday and Wednesday until 9am).
 ```{r}
 usage_by_hour_of_day <- d %>%
   group_by(weekday, hour) %>%
@@ -161,6 +162,32 @@ ggplot(usage_by_hour_of_day, aes(x = hour, y = weekday)) +
 ```
 
 
+# Usage by learner
+
+## Number of sessions
+
+```{r}
+session_count <- data %>%
+  group_by(User) %>%
+  summarise(sessions = length(unique(session)))
+
+ggplot(session_count, aes(x = sessions)) +
+  geom_histogram(binwidth = 10, colour = "black", fill = NA) +
+  labs(x = "Number of sessions", title = "Number of sessions per user")
+```
+
+## Number of trials
+
+```{r}
+trial_count <- data %>%
+  group_by(User) %>%
+  summarise(trials = n())
+
+ggplot(trial_count, aes(x = trials)) +
+  geom_histogram(binwidth = 1000, colour = "black", fill = NA) +
+  labs(x = "Number of trials", title = "Number of trials per user")
+```
+
 
 # Session length
 
@@ -189,4 +216,6 @@ ggplot(session_length, aes(x = duration)) +
   labs(x = "Session duration (minutes)")
 
 ```
+
+
 
