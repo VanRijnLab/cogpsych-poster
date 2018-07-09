@@ -35,7 +35,7 @@ cl <- makeCluster(no_cores, type = "FORK")
 
 # Import all .xlsx files in the raw/ directory
 path_raw_data <- "data/raw/"
-xlsx_list <- list.files(path_raw_data, pattern = ".xlsx", recursive = TRUE, full.names = TRUE)
+xlsx_list <- list.files(path_raw_data, pattern = ".xlsx", recursive = FALSE, full.names = TRUE)
 message(paste(length(xlsx_list), "data files found."))
 
 # Read into a single data frame
