@@ -167,7 +167,7 @@ ggplot(usage_by_hour_of_day, aes(x = hour, y = weekday)) +
 ## Number of sessions
 
 ```{r}
-session_count <- data %>%
+session_count <- d %>%
   group_by(User) %>%
   summarise(sessions = length(unique(session)))
 
@@ -179,7 +179,7 @@ ggplot(session_count, aes(x = sessions)) +
 ## Number of trials
 
 ```{r}
-trial_count <- data %>%
+trial_count <- d %>%
   group_by(User) %>%
   summarise(trials = n())
 
@@ -195,7 +195,7 @@ ggplot(trial_count, aes(x = trials)) +
 
 The histogram below shows that there is a narrow peak close to zero (users who start a session and immediately stop) and a wider peak to its right.
 ```{r}
-session_length <- data %>% 
+session_length <- d %>% 
   group_by(User, session) %>%
   summarise(duration = (max(presentationStartTime) - min(presentationStartTime)) / (60 * 1000),
             trials = n())
@@ -218,4 +218,114 @@ ggplot(session_length, aes(x = duration)) +
 ```
 
 
+
+# Question Type
+
+The RL study questions were available as open questions (type in the answer) and as multiple choice questions (select the answer from 4 choices shown on screen), and students decided for themselves what kind of question they wanted get during a practice session (a session is either entirely open or entirely MC).
+
+
+
+## Overall choice
+In aggregate, users show a strong preference for open questions (about 4 in every 5 sessions) over multiple choice questions (about 1 in 5 sessions):
+
+```{r}
+session_type <- d %>%
+  mutate(type = as.factor(if_else(Number.Of.Alternatives == 1, "Open", "Multiple choice"))) %>%
+  group_by(User, session, doy, type) %>%
+  tally()
+
+table(session_type$type)/nrow(session_type)
+```
+
+## Choice over time
+
+"Multiple choice" sessions are chosen at a fairly constant rate, whereas "open" sessions become much more popular as the exam gets closer:
+```{r}
+session_type_over_time <- session_type %>%
+  group_by(doy, type) %>%
+  summarise(n_sessions = n())
+
+ggplot(session_type_over_time, aes(x = doy, y = n_sessions, colour = type)) +
+  geom_line() +
+  labs(x = "Date", y = "Number of sessions") +
+  guides(colour = guide_legend("Question type"))
+```
+
+
+## Choice by user
+
+As the plot below shows, users are not entirely committed to choosing only open or only multiple choice sessions.
+Users above the diagonal line preferred multiple choice; users below the line preferred open questions. 
+```{r}
+session_choice_by_user <- session_type %>%
+  group_by(User, type) %>%
+  summarise(n_sessions = n()) %>%
+  spread(type, n_sessions, fill = 0)
+
+ggplot(session_choice_by_user, aes(x = `Open`, y = `Multiple choice`)) +
+  coord_equal() +
+  geom_abline(slope = 1, lty = 3) +
+  geom_point(alpha = 0.5, size = 2) +
+  labs(x = "Number of open sessions", y = "Number of multiple choice sessions") +
+  guides(colour = FALSE)
+```
+
+Preference by user:
+```{r}
+session_choice_by_user %>%
+  mutate(preferred = case_when(
+    `Multiple choice` < `Open` ~ "Open",
+    `Multiple choice` == `Open` ~ "Neither",
+    `Multiple choice` > `Open` ~ "Multiple choice")
+  ) %>%
+  pull(preferred) %>%
+  table()
+```
+
+
+
+We can make the same plot for the number of trials rather than the number of sessions, to account for any differences in session length (which the previous plot does not show).
+As before, users above the diagonal line completed more multiple choice trials; users below the line answered more open questions.
+
+
+```{r}
+session_choice_by_user_trials <- session_type %>%
+  group_by(User, type) %>%
+  summarise(n_trials = sum(n)) %>%
+  spread(type, n_trials, fill = 0)
+
+ggplot(session_choice_by_user_trials, aes(x = `Open`, y = `Multiple choice`)) +
+  coord_equal() +
+  geom_abline(slope = 1, lty = 3) +
+  geom_point(alpha = 0.5, size = 2) +
+  labs(x = "Number of open trials", y = "Number of multiple choice trials") +
+  guides(colour = FALSE)
+
+```
+
+Preference by user:
+```{r}
+session_choice_by_user_trials %>%
+  mutate(preferred = case_when(
+    `Multiple choice` < `Open` ~ "Open",
+    `Multiple choice` == `Open` ~ "Neither",
+    `Multiple choice` > `Open` ~ "Multiple choice")
+  ) %>%
+  pull(preferred) %>%
+  table()
+```
+
+As the plots and tables show, users strongly preferred open questions to multiple choice questions (only 24 of 138 users completed more MC sessions than open sessions; and 31 of 138 users completed more MC trials than open trials).
+
+
+## Session length by type
+
+The plots below show that both types of session tend to have about the same number of trials, but that sessions with multiple choice questions tend to take less time.
+```{r}
+session_length_by_type <- left_join(session_length, session_type, by = c("User", "session"))
+
+par(mfrow = c(1,2))
+boxplot(session_length_by_type$trials ~ session_length_by_type$type, main = "Trials per session")
+boxplot(session_length_by_type$duration ~ session_length_by_type$type, main = "Session duration (min)")
+```
 
