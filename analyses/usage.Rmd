@@ -16,8 +16,12 @@ library(dplyr)
 library(lubridate)
 library(tidyr)
 library(ggplot2)
+library(scales)
+library(viridis)
 
 theme_set(theme_classic())
+
+fig_path <- "figures for ICCM poster/usage/"
 ```
 
 
@@ -61,7 +65,7 @@ usage_by_doy <- d %>%
 ggplot(usage_by_doy, aes(x = doy, y = n / 1000)) +
   geom_line() +
   scale_x_date(date_breaks = "1 month", date_labels = "%b %Y") +
-  labs(x = "Date", y = "Number of trials (x 1000)") +
+  labs(x = "Date", y = "Number of trials (×1000)") +
   geom_vline(xintercept = c(rl_available_date, exam_date, resit_date), lty = "dotted") +
   annotate("label", x = c(rl_available_date, exam_date, resit_date), y = 50, label = c("Start", "Exam", "Resit"))
 
@@ -70,10 +74,11 @@ ggplot(usage_by_doy, aes(x = doy, y = n / 1000)) +
 ggplot(usage_by_doy, aes(x = day_of_course , y = n / 1000)) +
   geom_line() +
   scale_x_continuous() +
-  labs(x = "Day of course", y = "Number of trials (x 1000)") +
+  labs(x = "Day of course", y = "Number of trials (×1000)") +
   geom_vline(xintercept = c(rl_available_date - start_date, exam_date - start_date, resit_date - start_date), lty = "dotted") +
-  annotate("label", x = c(rl_available_date - start_date, exam_date - start_date, resit_date - start_date), y = 50, label = c("Start", "Exam", "Resit"))
+  annotate("label", x = c(rl_available_date - start_date + 1, exam_date - start_date, resit_date - start_date - 1), y = 50, label = c("Start", "Exam", "Resit"))
 
+ggsave(paste0(fig_path, "usage_by_day_of_course.pdf"), width = 5, height = 3)
 ```
 
 
@@ -93,8 +98,9 @@ ggplot(usage_by_hour, aes(x = hour, y = n / 1000)) +
   geom_point() +
   geom_line() +
   scale_x_continuous(breaks = seq(0,23, by = 2)) +
-  labs(x = "Hour of the day", y = "Number of trials (x 1000)", title = "Study frequency")
+  labs(x = "Hour of the day", y = "Number of trials (×1000)")
 
+ggsave(paste0(fig_path, "usage_by_hour_average.pdf"), width = 5, height = 3)
 ```
 
 ## Split by day
@@ -111,11 +117,14 @@ usage_by_hour_of_doy <- d %>%
 ggplot(usage_by_hour_of_doy, aes(x = hour, y = days_until_exam)) +
   geom_tile(aes(fill = n)) +
   coord_equal() +
-  scale_fill_distiller(palette = "YlOrRd", direction = 1) +
+  scale_fill_viridis(option = "magma", begin = 0.15, end = 0.95, direction = -1) +
+  #scale_fill_distiller(palette = "YlOrRd", direction = 1) +
   scale_x_continuous(breaks = seq(0,23, by = 2)) +
   scale_y_reverse() +
-  labs(x = "Hour of the day", y = "Days until exam", title = "Study frequency") +
-  guides(fill = guide_colourbar("Number of trials"))
+  labs(x = "Hour of the day", y = "Days until exam") +
+  guides(fill = guide_colourbar("Number\nof trials"))
+
+ggsave(paste0(fig_path, "usage_by_hour_per_day.pdf"), width = 5, height = 5)
 
 ```
 
@@ -138,10 +147,13 @@ usage_by_hour_of_day <- d %>%
 ggplot(usage_by_hour_of_day, aes(x = hour, y = weekday)) +
   geom_tile(aes(fill = n)) +
   coord_equal() +
-  scale_fill_distiller(palette = "YlOrRd", direction = 1) +
+  scale_fill_viridis(option = "magma", begin = 0.15, end = 0.95, direction = -1) +
+  # scale_fill_distiller(palette = "YlOrRd", direction = 1) +
   scale_x_continuous(breaks = c(0:23)) +
-  labs(x = "Hour of the day", y = "Day of the week", title = "Study frequency") +
-  guides(fill = guide_colourbar("Number of trials"))
+  labs(x = "Hour of the day", y = "Day of the week") +
+  guides(fill = guide_colourbar("Number\nof trials"))
+
+ggsave(paste0(fig_path, "usage_by_hour_per_weekday_summed.pdf"), width = 7, height = 5)
 
 ```
 
@@ -155,10 +167,13 @@ This lets us see how learning is distributed within a day, but does not allow di
 ggplot(usage_by_hour_of_day, aes(x = hour, y = weekday)) +
   geom_tile(aes(fill = freq)) +
   coord_equal() +
-  scale_fill_distiller(palette = "YlOrRd", direction = 1) +
+  scale_fill_viridis(option = "magma", begin = 0.15, end = 0.95, direction = -1) +
+  # scale_fill_distiller(palette = "YlOrRd", direction = 1) +
   scale_x_continuous(breaks = c(0:23)) +
-  labs(x = "Hour of the day", y = "Day of the week", title = "Study frequency") +
+  labs(x = "Hour of the day", y = "Day of the week") +
   guides(fill = FALSE)
+
+ggsave(paste0(fig_path, "usage_by_hour_per_weekday_normalised.pdf"), width = 5, height = 5)
 ```
 
 
@@ -172,8 +187,13 @@ session_count <- d %>%
   summarise(sessions = length(unique(session)))
 
 ggplot(session_count, aes(x = sessions)) +
-  geom_histogram(binwidth = 10, colour = "black", fill = NA) +
-  labs(x = "Number of sessions", title = "Number of sessions per user")
+  geom_histogram(aes(y = ..count../sum(..count..)), breaks = seq(0, max(session_count$sessions), by = 10), colour = "black", fill = NA) +
+  labs(x = "Number of study sessions per learner", y = NULL) + 
+  scale_x_continuous(breaks = seq(0, max(session_count$sessions), by = 20)) +
+  scale_y_continuous(labels = percent)
+
+ggsave(paste0(fig_path, "session_count_histogram.pdf"), width = 5, height = 3)
+
 ```
 
 ## Number of trials
@@ -184,8 +204,12 @@ trial_count <- d %>%
   summarise(trials = n())
 
 ggplot(trial_count, aes(x = trials)) +
-  geom_histogram(binwidth = 1000, colour = "black", fill = NA) +
-  labs(x = "Number of trials", title = "Number of trials per user")
+  geom_histogram(aes(y = ..count../sum(..count..)), breaks = seq(0, max(trial_count$trials), by = 500), colour = "black", fill = NA) +
+  labs(x = "Number of trials per learner", y = NULL) + 
+  scale_x_continuous(breaks = seq(0, 5000, by = 1000)) +
+  scale_y_continuous(labels = percent)
+
+ggsave(paste0(fig_path, "trial_count_histogram.pdf"), width = 5, height = 3)
 ```
 
 
@@ -201,8 +225,13 @@ session_length <- d %>%
             trials = n())
 
 ggplot(session_length, aes(x = trials)) +
-  geom_histogram(binwidth = 5, colour = "black", fill = NA) +
-  labs(x = "Session length (trials)")
+  geom_histogram(aes(y = ..count../sum(..count..)), breaks = seq(0, max(session_length$trials), by = 5), colour = "black", fill = NA) +
+  labs(x = "Number of trials per study session", y = NULL) +
+  scale_x_continuous(breaks = seq(0, max(session_length$trials), by = 100)) +
+  scale_y_continuous(labels = percent)
+
+ggsave(paste0(fig_path, "trials_per_session_histogram.pdf"), width = 5, height = 3)
+  
 ```
 
 ## Duration
@@ -212,8 +241,13 @@ Some session durations stand out in the histogram, in particular 8 minutes (the 
 This regularity suggests that users have a tendency to finish a session once they have started.
 ```{r}
 ggplot(session_length, aes(x = duration)) +
-  geom_histogram(binwidth = 1, colour = "black", fill = NA) +
-  labs(x = "Session duration (minutes)")
+  geom_histogram(aes(y = ..count../sum(..count..)), breaks = seq(0, max(session_length$duration), by = 1), colour = "black", fill = NA) +
+  labs(x = "Session duration (minutes)", y = NULL) +
+  scale_x_continuous(breaks = seq(0, max(session_length$duration), by = 10)) +
+  scale_y_continuous(labels = percent)
+
+ggsave(paste0(fig_path, "session_duration_histogram.pdf"), width = 5, height = 3)
+
 
 ```
 
@@ -242,13 +276,20 @@ table(session_type$type)/nrow(session_type)
 "Multiple choice" sessions are chosen at a fairly constant rate, whereas "open" sessions become much more popular as the exam gets closer:
 ```{r}
 session_type_over_time <- session_type %>%
-  group_by(doy, type) %>%
+  left_join(usage_by_doy, by = "doy") %>%
+  group_by(doy, day_of_course, type) %>%
   summarise(n_sessions = n())
 
-ggplot(session_type_over_time, aes(x = doy, y = n_sessions, colour = type)) +
+ggplot(session_type_over_time, aes(x = day_of_course, y = n_sessions, colour = type)) +
   geom_line() +
-  labs(x = "Date", y = "Number of sessions") +
-  guides(colour = guide_legend("Question type"))
+  scale_x_continuous() +
+  labs(x = "Day of course", y = "Number of session") +
+  geom_vline(xintercept = c(rl_available_date - start_date, exam_date - start_date, resit_date - start_date), lty = "dotted") +
+  annotate("label", x = c(rl_available_date - start_date + 1, exam_date - start_date, resit_date - start_date - 1), y = 850, label = c("Start", "Exam", "Resit")) +
+  guides(colour = guide_legend("Question type")) +
+  theme(legend.position = c(0.675, 0.6))
+
+ggsave(paste0(fig_path, "usage_by_day_of_course_mc_vs_open.pdf"), width = 5, height = 3)
 ```
 
 
@@ -264,10 +305,13 @@ session_choice_by_user <- session_type %>%
 
 ggplot(session_choice_by_user, aes(x = `Open`, y = `Multiple choice`)) +
   coord_equal() +
+  scale_x_continuous(breaks = seq(0, 100, 20)) +
+  scale_y_continuous(breaks = seq(0, 100, 20)) +
   geom_abline(slope = 1, lty = 3) +
   geom_point(alpha = 0.5, size = 2) +
-  labs(x = "Number of open sessions", y = "Number of multiple choice sessions") +
-  guides(colour = FALSE)
+  labs(x = "Number of open sessions", y = "Number of multiple choice sessions")
+
+ggsave(paste0(fig_path, "session_count_by_user_and_type.pdf"), width = 5, height = 5)
 ```
 
 Preference by user:
@@ -298,8 +342,9 @@ ggplot(session_choice_by_user_trials, aes(x = `Open`, y = `Multiple choice`)) +
   coord_equal() +
   geom_abline(slope = 1, lty = 3) +
   geom_point(alpha = 0.5, size = 2) +
-  labs(x = "Number of open trials", y = "Number of multiple choice trials") +
-  guides(colour = FALSE)
+  labs(x = "Number of open trials", y = "Number of multiple choice trials")
+
+ggsave(paste0(fig_path, "trial_count_by_user_and_type.pdf"), width = 5, height = 5)
 
 ```
 
@@ -320,12 +365,12 @@ As the plots and tables show, users strongly preferred open questions to multipl
 
 ## Session length by type
 
-The plots below show that both types of session tend to have about the same number of trials, but that sessions with multiple choice questions tend to take less time.
+The plots below show that both types of session have about the same number of trials, but that sessions with multiple choice questions may take a bit less time (though there are > 4x more open sessions than MC sessions, so take these comparisons with a grain of salt).
 ```{r}
 session_length_by_type <- left_join(session_length, session_type, by = c("User", "session"))
 
 par(mfrow = c(1,2))
 boxplot(session_length_by_type$trials ~ session_length_by_type$type, main = "Trials per session")
-boxplot(session_length_by_type$duration ~ session_length_by_type$type, main = "Session duration (min)")
+boxplot(session_length_by_type$duration ~ session_length_by_type$type, main = "Session duration (minutes)")
 ```
 
