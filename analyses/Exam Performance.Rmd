@@ -23,6 +23,7 @@ load(file.path("..", "data", "cogpsych_data_anon.Rdata"))
 figures.folder <- "figures for ICCM poster"
 ```
 
+
 ```{r, echo=FALSE}
 # Helper functions
 inv.logit <- function(x) {
@@ -80,9 +81,9 @@ pj <- position_jitter(width=.1, height = 0)
 
 ggplot(exam.per.student, aes(studied, correct.exam)) + 
   # geom_violin(scale="count") + 
-  geom_boxplot(width=.25, outlier.color = NA, color="gray") +
+  geom_boxplot(width=.4, outlier.color = NA, color="gray") +
   # geom_line(aes(group=Username), color="lightgrey", alpha=.5, position=pj) +
-  geom_point(aes(color=studied, size=count), alpha=.5, position=pj) +
+  geom_point(aes(color=studied, size=count), alpha=.5, position=pj, show.legend = FALSE) +
   geom_segment(aes(x = 1, y = grand.means$correct.exam[1], xend = 1.5, yend = grand.means$correct.exam[1]), color="darkgrey") + 
   geom_segment(aes(x = 1.5, y = grand.means$correct.exam[2], xend = 2, yend = grand.means$correct.exam[2]), color="darkgrey") +
   geom_point(data=grand.means, size=5) + 
@@ -90,10 +91,10 @@ ggplot(exam.per.student, aes(studied, correct.exam)) +
   scale_y_continuous(breaks=seq(0, 1, .2)) +
   annotate("label", x=c(1.5, 1.5), y=grand.means$correct.exam, label=format(round(grand.means$correct.exam, 3), nsmall=3), size=3) +
   labs(x=NULL, y="Proportion correct on exam on subset of items", size=NULL) +
-  scale_colour_discrete(guide = FALSE) +
+  # scale_colour_discrete(guide = FALSE) +
   NULL
 
-# ggsave(file.path(figures.folder, "Proportion correct on exam f(studied).pdf"), width = 5, height = 4)
+# ggsave(file.path(figures.folder, "Proportion correct on exam f(studied).pdf"), width = 3, height = 5)
 ```
 
 The size of the points indicates the number of observations the proportion is based on, smaller points correspond to fewer observations.
@@ -240,12 +241,12 @@ ggplot(new.data, aes(reps, pred.prop, group=alpha.N)) +
   labs(x="\nRepetitions of an item (re-transformed from log-scale)", y="Predicted probability of\nanswering an item correctly", color="Normalized alpha:") + 
   scale_x_continuous(breaks = unique(new.data$reps), labels = round(unique(new.data$reps), 1)) +
   theme(legend.direction = "horizontal") +
-  theme(legend.position = c(.6, .1)) +
+  theme(legend.position = c(.75, .1)) +
   theme(axis.text.x = element_text(angle = 90, hjust = 1, size=7)) +
   theme(axis.text.y = element_text(size=7)) +
   NULL
 
-# ggsave(file.path(figures.folder, "Pred prop correct f(reps, alpha).pdf"), width = 5, height = 4)
+# ggsave(file.path(figures.folder, "Pred prop correct f(reps, alpha).pdf"), width = 7, height = 4)
 ```
 
 This shows nicely that more repetitions lead to a higher probability of answering an item correctly. It also shows that the differences in alpha values between people have a larger effect than the numer of repetitions. The scales are very different, of course, and it's a bit hard to visualize it in a way that is easier to interpret.

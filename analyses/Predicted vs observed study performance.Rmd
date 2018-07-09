@@ -35,7 +35,7 @@ theme_set(theme_minimal())
 library(hexbin) # for stat_hexbin()
 library(overlapping) # to compute overlap between distributions
 
-load(file.path("..", "data", "data & grades anon w IC.Rdata"))
+load(file.path("..", "data", "cogpsych_data_anon.Rdata"))
 figures.folder <- "figures for ICCM poster"
 
 
@@ -70,22 +70,45 @@ The most simplistic approach is to simply look, for each trial, whether the esti
 data$est.correct <- data$activation >= -.8
 ```
 
-The number of errors made by students during learning was relatively low: `r percent(mean(data$correct))`% of all recorded responses were correct. This is great. The model estimates a fact to be un-retrievable if the estimated activation is below the retrieval threshold. Across all recorded trials, the estimated activation was below the threshold on `r round(mean(data$est.correct)*100, 1)`% of the trials. This indicates that the model severely underestimates students' performance. Overall, the predicted behavior matched the observed behavior on `r percent(mean(data$correct == data$est.correct))`% of the trials. 
+The number of errors made by students during learning was relatively low: `r percent(mean(data$correct))` of all recorded responses were correct. This is great. The model estimates a fact to be un-retrievable if the estimated activation is below the retrieval threshold. Across all recorded trials, the estimated activation was below the threshold on `r percent(mean(data$est.correct))`% of the trials. This indicates that the model severely underestimates students' performance. Overall, the predicted behavior matched the observed behavior on `r percent(mean(data$correct == data$est.correct))`% of the trials. 
 
 ```{r}
-(bf.prop <- proportionBF(sum(data$correct == data$est.correct), nrow(data), p=1/2))
+1 / (bf.prop <- proportionBF(sum(data$correct == data$est.correct), nrow(data), p=1/2))
 ```
 
-The proportion test yields overwhelming evidence that the proportion of instances in which the predicted response matches the observed response is *not* 0.5. It is in fact `r round(mean(data$correct == data$est.correct), 3)`, which -- I think -- can be seen as chance performance for practical purposes. (The statistical test is based on N = `r prettyNum(nrow(data), big.mark=",")`, so there's a ton of data to reveal even the smallest differences.)
+The proportion test yields strong evidence that the proportion of instances in which the predicted response matches the observed response is equal to 0.5. It is in fact `r round(mean(data$correct == data$est.correct), 3)`. (The statistical test is based on N = `r prettyNum(nrow(data), big.mark=",")`, so there's a ton of data.)
 
 There is a potential problem here, though: The proportion of trials in which the estimated activation is very low is rather high. Ideally, the model will prevent this situation by making sure that items are presented for rehearsal before the activation can decay that much. However, the model can only do this if people are actually studying. It cannot prevent activation to decay between sessions. Therefore, it makes sense to look at the activation of a fact seperately for (a) the first repetition in a session after a delay, and (b) within-session repetitions. The proportion of instances in which the model's prediction matches the behavior should be higher in (b) and might potentially be very low for (a). In (b), the number of trials in which the predicted activation is below the threshold should ideally be 0.
 
+To summarize these numbers, it's probably easiest to make a 2x2 table with these numbers:
+
+```{r}
+percent(mean(data$correct & data$est.correct)) # is correct, was predicted correct
+percent(mean(data$correct & !data$est.correct)) # is correct, was predicted incorrect
+
+percent(mean(!data$correct & data$est.correct)) # is not correct, was predicted correct
+percent(mean(!data$correct & !data$est.correct)) # is not correct, was predicted incorrect
+```
+
+These are calculated across all `r prettify(nrow(data))` observations.
+
 ### Between- vs. within-session repetitions
 
+Maarten added the variable `repetition` which indicates how often an item was repeated *within* a session. Thus, all trials on which `repetition == 1` is the first time an item is seen in a session. Consequently, we can look at the activation seperately for trials on which this is TRUE and those on which it is FALSE.
+
+```{r}
+data$first.in.session <- data$repetition == 1
+
+emp.cor <- aggregate(correct ~ first.in.session, data, mean)
+est.cor <- aggregate(est.correct ~ first.in.session, data, mean)
+```
+
+Since sessions tend to be rather short, the number of trials that are the first repetition of an item in a given session is relatively high: `r percent(mean(data$first.in.session))`. What is interesting is that **in the empirical data**, there is hardly any difference in the proportion of correct responses for the first repetition of an item (`r percent(emp.cor$correct[2])`) and for subsequent repetitions (`r percent(emp.cor$correct[1])`). **In the estimated responses**, on the other hand, there is a difference: `r percent(est.cor$est.correct[2])` (first rep) compared to `r percent(est.cor$est.correct[1])` (subsequent reps). Notably, both these percentages severely underestimate students' actual performance.
 
 
+### Comparison with TopiCS data
 
-
+This comparison is not very interesting because the output of the experimental setup did not include the estimated activation on each trial, only the estimated RT. The only comparison we can make is to report that in these data, participants responded correctly on `r percent(mean(lab.data$isCorrect))` of the trials (which is just a little bit lower than the `r percent(mean(data$correct))` in the real world data).
 
 
 # Comparing predicted and observed response times
@@ -171,28 +194,29 @@ ggplot(data.RT.sub, aes(estimatedResponseTime, reactionTime)) +
   NULL
 ```
 
-This plot shows the raw data points. But, of course, there are **many**. Exporting this plot results in a huge file and the plot also doesn't quite show were most of the mass is. I did overlaid the quantiles on each dimension, though to add some kind of summary statistic: The superimposed yellow points show the quantiles (specifically `r paste(probs*100, "%", collapse = ", ", sep="")`). The blue line is the lm fit that corresponds to the regression coefficient: r = `r round(cor(data.RT.sub$estimatedResponseTime, data.RT.sub$reactionTime), 3)`. Given the huge amount of data, this coefficient will of course be shown not to be 0: t = 114.21, df = 268330, p-value < 2.2e-16.
+This plot shows the raw data points. But, of course, there are **many**. Exporting this plot results in a huge file and the plot also doesn't quite show were most of the mass is. I did overlay the quantiles on each dimension, though to add some kind of summary statistic: The superimposed yellow points show the quantiles (specifically `r paste(probs*100, "%", collapse = ", ", sep="")`). The blue line is the lm fit that corresponds to the regression coefficient: r = `r round(cor(data.RT.sub$estimatedResponseTime, data.RT.sub$reactionTime), 3)`. Given the huge amount of data, this coefficient will of course be shown not to be 0: t = 114.21, df = 268330, p-value < 2.2e-16.
 
 For a more digestible plot, this might be nice:
 
 ```{r}
-ggplot(data.RT.sub, aes(estimatedResponseTime, reactionTime)) + 
+ggplot(data.RT.sub, aes(estimatedResponseTime/1000, reactionTime/1000)) + 
   geom_abline(intercept = 0, slope = 1, color="grey") + 
-  stat_binhex(alpha = .9) +
+  stat_binhex(alpha = .9, show.legend = FALSE) +
   # geom_smooth(method="lm") +
-  labs(title="Comparing predicted and observed RTs", x="\nPredicted RT (ms)", y="\nObserved RT (ms)",
-       subtitle=paste("Based on ", prettyNum(nrow(data.RT.sub), big.mark = ","), " observations (", round((nrow(data.RT.sub)/nrow(data))*100, 1), "% of all recorded data)", sep=""), fill="Observations:") +
+  # labs(title="Comparing predicted and observed RTs", x="\nPredicted RT (ms)", y="\nObserved RT (ms)",
+       # subtitle=paste("Based on ", prettyNum(nrow(data.RT.sub), big.mark = ","), " observations (", round((nrow(data.RT.sub)/nrow(data))*100, 1), "% of all recorded data)", sep=""), fill="Observations:") +
+  labs(x="\nPredicted RT (sec)", y="\nObserved RT (sec)") +
   coord_fixed() +
-  scale_x_continuous(breaks = seq(0, RT.cutoff[2], 10000)) +
-  scale_y_continuous(breaks = seq(0, RT.cutoff[2], 10000)) +
-  theme(legend.title=element_text(size=8)) +
+  scale_x_continuous(breaks = seq(0, RT.cutoff[2], 10)) +
+  scale_y_continuous(breaks = seq(0, RT.cutoff[2], 10)) +
+  # theme(legend.title=element_text(size=8)) +
   NULL
 
-ggsave(file.path(figures.folder, "Predicted vs. observed RT distributions hexbin.pdf"), width = 5.5, height = 5)
+# ggsave(file.path(figures.folder, "Predicted vs. observed RT distributions hexbin.pdf"), width = 5, height = 5)
 ```
 
 
-Another way to approach this might be to plot the distributions in the same figure, to get a direct visual comparison:
+Another way to approach this might be to plot the distributions in the same figure, to get a direct visual comparison. Here, I will also compute some measures that capture the similarity of the two distributions and overlay them.
 
 ```{r}
 # Compute the overlap between the distributions:
@@ -225,16 +249,23 @@ ggplot(dist, aes(x, group=type)) +
   annotate("text", x=cutoff*.5 + 500, y=1.5/10000, label=paste("RMSE =", prettify(round(rmse))), hjust=0) +
   annotate("text", x=cutoff*.5 + 500, y=1/10000, label=paste("MAE =", prettify(round(mae))), hjust=0) +
   geom_vline(data=medians, aes(xintercept=x, color=type), show.legend = FALSE) +
-  theme(legend.position = c(0.85, 0.85)) +
-  labs(title="Comparing RT Distributions: Observed vs. Predicted", subtitle="Vertical lines are the distributions' medians", x="Response Time (ms)", y=NULL, fill=NULL) +
+  theme(legend.position = c(0.585, 0.85)) +
+  # labs(title="Comparing RT Distributions: Observed vs. Predicted", subtitle="Vertical lines are the distributions' medians", x="Response Time (ms)", y=NULL, fill=NULL) +
+  labs(x="Response Time (sec)", y=NULL, fill=NULL) +
   scale_y_continuous(labels = NULL) +
-  scale_x_continuous(breaks = seq(0, cutoff, cutoff/6), labels = prettify(seq(0, cutoff, cutoff/6))) +
+  scale_x_continuous(breaks = seq(0, cutoff, cutoff/6), labels = (seq(0, cutoff, cutoff/6))/1000) +
   NULL
 
-ggsave(file.path(figures.folder, "Predicted vs. observed RT distributions density.pdf"), width = 5, height = 4)
+# ggsave(file.path(figures.folder, "Predicted vs. observed RT distributions density.pdf"), width = 5, height = 3.5)
 ```
 
 Using a cutoff of `r prettify(cutoff)` for the plotting, we're retaining `r percent(retained)` of the data. Note that the correlation coefficient and the overlap are computed across all data in `data.RT.sub` and are not affected by the `cutoff`.
+
+Do the distributions look very different for trials with correct and incorrect responses?
+
+```{r}
+ggplot(data.RT.sub, aes(estimatedResponseTime)) + geom_density(aes(fill=correct), alpha=.6) + labs(title="Predicted RTs Only") + xlim(0, 20000)
+```
 
 
 ## Conclusions
@@ -302,7 +333,7 @@ What's up with the distribution of predicted values? The range is generally much
 If we look at the estimated RTs separately for correct and incorrect responses, we can see that the second bump of faster RTs we see in the plot is associated with correct responses:
 
 ```{r}
-ggplot(lab.data.RTsub, aes(estRT)) + geom_density(aes(fill=isCorrect), alpha=.6) + labs(title="Predicted RTs Only")
+ggplot(lab.data.RTsub, aes(estRT)) + geom_density(aes(fill=isCorrect), alpha=.6) + labs(title="TopiCS'16 Data: Predicted RTs Only")
 ```
 
 
