@@ -15,6 +15,7 @@ output:
 library(dplyr)
 library(lubridate)
 library(tidyr)
+library(forcats)
 library(ggplot2)
 library(scales)
 library(viridis)
@@ -22,6 +23,8 @@ library(viridis)
 theme_set(theme_classic())
 
 fig_path <- "figures for ICCM poster/usage/"
+
+save_figs <- FALSE
 ```
 
 
@@ -78,7 +81,7 @@ ggplot(usage_by_doy, aes(x = day_of_course , y = n / 1000)) +
   geom_vline(xintercept = c(rl_available_date - start_date, exam_date - start_date, resit_date - start_date), lty = "dotted") +
   annotate("label", x = c(rl_available_date - start_date + 1, exam_date - start_date, resit_date - start_date - 1), y = 50, label = c("Start", "Exam", "Resit"))
 
-ggsave(paste0(fig_path, "usage_by_day_of_course.pdf"), width = 5, height = 3)
+if(save_figs) ggsave(paste0(fig_path, "usage_by_day_of_course.pdf"), width = 5, height = 3)
 ```
 
 
@@ -100,7 +103,7 @@ ggplot(usage_by_hour, aes(x = hour, y = n / 1000)) +
   scale_x_continuous(breaks = seq(0,23, by = 2)) +
   labs(x = "Hour of the day", y = "Number of trials (×1000)")
 
-ggsave(paste0(fig_path, "usage_by_hour_average.pdf"), width = 5, height = 3)
+if(save_figs) ggsave(paste0(fig_path, "usage_by_hour_average.pdf"), width = 5, height = 3)
 ```
 
 ## Split by day
@@ -124,7 +127,7 @@ ggplot(usage_by_hour_of_doy, aes(x = hour, y = days_until_exam)) +
   labs(x = "Hour of the day", y = "Days until exam") +
   guides(fill = guide_colourbar("Number\nof trials"))
 
-ggsave(paste0(fig_path, "usage_by_hour_per_day.pdf"), width = 5, height = 5)
+if(save_figs) ggsave(paste0(fig_path, "usage_by_hour_per_day.pdf"), width = 5, height = 5)
 
 ```
 
@@ -153,7 +156,7 @@ ggplot(usage_by_hour_of_day, aes(x = hour, y = weekday)) +
   labs(x = "Hour of the day", y = "Day of the week") +
   guides(fill = guide_colourbar("Number\nof trials"))
 
-ggsave(paste0(fig_path, "usage_by_hour_per_weekday_summed.pdf"), width = 7, height = 5)
+if(save_figs) ggsave(paste0(fig_path, "usage_by_hour_per_weekday_summed.pdf"), width = 7, height = 5)
 
 ```
 
@@ -173,7 +176,7 @@ ggplot(usage_by_hour_of_day, aes(x = hour, y = weekday)) +
   labs(x = "Hour of the day", y = "Day of the week") +
   guides(fill = FALSE)
 
-ggsave(paste0(fig_path, "usage_by_hour_per_weekday_normalised.pdf"), width = 5, height = 5)
+if(save_figs) ggsave(paste0(fig_path, "usage_by_hour_per_weekday_normalised.pdf"), width = 5, height = 5)
 ```
 
 
@@ -192,7 +195,7 @@ ggplot(session_count, aes(x = sessions)) +
   scale_x_continuous(breaks = seq(0, max(session_count$sessions), by = 20)) +
   scale_y_continuous(labels = percent)
 
-ggsave(paste0(fig_path, "session_count_histogram.pdf"), width = 5, height = 3)
+if(save_figs) ggsave(paste0(fig_path, "session_count_histogram.pdf"), width = 5, height = 3)
 
 ```
 
@@ -209,7 +212,7 @@ ggplot(trial_count, aes(x = trials)) +
   scale_x_continuous(breaks = seq(0, 5000, by = 1000)) +
   scale_y_continuous(labels = percent)
 
-ggsave(paste0(fig_path, "trial_count_histogram.pdf"), width = 5, height = 3)
+if(save_figs) ggsave(paste0(fig_path, "trial_count_histogram.pdf"), width = 5, height = 3)
 ```
 
 
@@ -230,7 +233,7 @@ ggplot(session_length, aes(x = trials)) +
   scale_x_continuous(breaks = seq(0, max(session_length$trials), by = 100)) +
   scale_y_continuous(labels = percent)
 
-ggsave(paste0(fig_path, "trials_per_session_histogram.pdf"), width = 5, height = 3)
+if(save_figs) ggsave(paste0(fig_path, "trials_per_session_histogram.pdf"), width = 5, height = 3)
   
 ```
 
@@ -246,10 +249,56 @@ ggplot(session_length, aes(x = duration)) +
   scale_x_continuous(breaks = seq(0, max(session_length$duration), by = 10)) +
   scale_y_continuous(labels = percent)
 
-ggsave(paste0(fig_path, "session_duration_histogram.pdf"), width = 5, height = 3)
-
+if(save_figs) ggsave(paste0(fig_path, "session_duration_histogram.pdf"), width = 5, height = 3)
 
 ```
+
+
+# Session spacing
+
+How did students spread out their learning over the course?
+
+## Intervals between sessions
+
+```{r}
+session_spacing <- d %>%
+  group_by(User, session) %>%
+  summarise(session_start = min(start_time),
+            session_end = max(start_time) + (reactionTime[which.max(start_time)] / 1000)) %>%
+  group_by(User) %>%
+  mutate(session_interval = session_start - lag(session_end)) %>%
+  filter(!is.na(session_interval)) %>% # Leave out the non-existent interval leading up to a user's first session
+  mutate(session_interval_simple = case_when(
+    session_interval <= 1 * 60 ~ "1 minute",
+    session_interval <= 10 * 60 ~ "10 minutes",
+    session_interval <= 60 * 60 ~ "1 hour",
+    session_interval <= 24 * 60 * 60 ~ "1 day",
+    session_interval <= 7 * 24 * 60 * 60 ~ "1 week",
+    TRUE ~ "longer"
+  )) %>%
+  ungroup() %>%
+  mutate(session_interval_simple = fct_relevel(as.factor(session_interval_simple), "1 minute", "10 minutes", "1 hour", "1 day", "1 week", "longer"))
+
+
+hist(as.numeric(session_spacing$session_interval) / 3600, 100, xlab = "Time between sessions (hours)", main = "Session intervals")
+summary(as.numeric(session_spacing$session_interval) / 3600)
+```
+
+Unsurprisingly, the time intervals between a user's sessions have a massively skewed distribution.
+
+We can get a more interpretable representation of the intervals by discretising.
+The table below shows the cumulative proportion of session intervals that fall within a certain time range.
+It indicates that users are inclined to batch their learning sessions together: almost a quarter of sessions start within 1 minute of the end of the previous session, and over half start within 10 minutes. Only about 10% of session-to-session intervals are longer than 24 hours. 
+```{r}
+cumsum(table(session_spacing$session_interval_simple)/nrow(session_spacing))
+```
+
+## Total practice span
+
+How much time is there between the first and last moment of study for each user?
+
+To do ...
+
 
 
 
@@ -289,7 +338,7 @@ ggplot(session_type_over_time, aes(x = day_of_course, y = n_sessions, colour = t
   guides(colour = guide_legend("Question type")) +
   theme(legend.position = c(0.675, 0.6))
 
-ggsave(paste0(fig_path, "usage_by_day_of_course_mc_vs_open.pdf"), width = 5, height = 3)
+if(save_figs) ggsave(paste0(fig_path, "usage_by_day_of_course_mc_vs_open.pdf"), width = 5, height = 3)
 ```
 
 
@@ -311,7 +360,7 @@ ggplot(session_choice_by_user, aes(x = `Open`, y = `Multiple choice`)) +
   geom_point(alpha = 0.5, size = 2) +
   labs(x = "Number of open sessions", y = "Number of multiple choice sessions")
 
-ggsave(paste0(fig_path, "session_count_by_user_and_type.pdf"), width = 5, height = 5)
+if(save_figs) ggsave(paste0(fig_path, "session_count_by_user_and_type.pdf"), width = 5, height = 5)
 ```
 
 Preference by user:
@@ -344,7 +393,7 @@ ggplot(session_choice_by_user_trials, aes(x = `Open`, y = `Multiple choice`)) +
   geom_point(alpha = 0.5, size = 2) +
   labs(x = "Number of open trials", y = "Number of multiple choice trials")
 
-ggsave(paste0(fig_path, "trial_count_by_user_and_type.pdf"), width = 5, height = 5)
+if(save_figs) ggsave(paste0(fig_path, "trial_count_by_user_and_type.pdf"), width = 5, height = 5)
 
 ```
 
