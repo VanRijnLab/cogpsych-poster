@@ -84,8 +84,6 @@ ggplot(usage_by_doy, aes(x = day_of_course , y = n / 1000)) +
 if(save_figs) ggsave(paste0(fig_path, "usage_by_day_of_course.pdf"), width = 5, height = 3)
 ```
 
-
-
 # Plot usage by hour of day
 
 ## Across days
@@ -198,6 +196,15 @@ ggplot(session_count, aes(x = sessions)) +
 if(save_figs) ggsave(paste0(fig_path, "session_count_histogram.pdf"), width = 5, height = 3)
 
 ```
+
+What proportion of learners completed only a single session?
+```{r}
+session_count %>%
+  filter(sessions == 1) %>%
+  nrow() / nrow(session_count)
+```
+
+
 
 ## Number of trials
 
@@ -385,6 +392,15 @@ ggplot(session_type_over_time, aes(x = day_of_course, y = n_sessions, colour = t
   theme(legend.position = c(0.675, 0.6))
 
 if(save_figs) ggsave(paste0(fig_path, "usage_by_day_of_course_mc_vs_open.pdf"), width = 5, height = 3)
+```
+
+Much of the practice takes place on the day before the exam:
+```{r}
+session_type_over_time %>% 
+  filter(doy == exam_date - 1) %>%
+  pull(n_sessions) %>%
+  sum() / sum(session_type_over_time$n_sessions)
+  
 ```
 
 
