@@ -385,7 +385,7 @@ session_type_over_time <- session_type %>%
 ggplot(session_type_over_time, aes(x = day_of_course, y = n_sessions, colour = type)) +
   geom_line() +
   scale_x_continuous() +
-  labs(x = "Day of course", y = "Number of session") +
+  labs(x = "Day of course", y = "Number of sessions") +
   geom_vline(xintercept = c(rl_available_date - start_date, exam_date - start_date, resit_date - start_date), lty = "dotted") +
   annotate("label", x = c(rl_available_date - start_date + 1, exam_date - start_date, resit_date - start_date - 1), y = 850, label = c("Start", "Exam", "Resit")) +
   guides(colour = guide_legend("Question type")) +
