@@ -262,9 +262,14 @@ How did students spread out their learning over the course?
 
 ```{r}
 session_spacing <- d %>%
+  group_by(User) %>%
+  filter(length(unique(session)) > 1) %>% # Filter out users with only one session
   group_by(User, session) %>%
   summarise(session_start = min(start_time),
-            session_end = max(start_time) + (reactionTime[which.max(start_time)] / 1000)) %>%
+            session_end = max(start_time) + if_else(
+              is.na(reactionTime[which.max(start_time)]), 
+              median(d$reactionTime, na.rm = TRUE) / 1000,
+              reactionTime[which.max(start_time)] / 1000)) %>%
   group_by(User) %>%
   mutate(session_interval = session_start - lag(session_end)) %>%
   filter(!is.na(session_interval)) %>% # Leave out the non-existent interval leading up to a user's first session
@@ -297,9 +302,50 @@ cumsum(table(session_spacing$session_interval_simple)/nrow(session_spacing))
 
 How much time is there between the first and last moment of study for each user?
 
-To do ...
+```{r}
+session_span <- session_spacing %>%
+  group_by(User) %>%
+  summarise(start = min(session_start),
+            end = max(session_end),
+            total_span = max(session_end) - min(session_start)) %>%
+  mutate(start_doc = as_date(start) - start_date,
+         end_doc = as_date(end) - start_date) %>%
+  left_join(grades, by = "User") %>%
+  arrange(start)
+```
 
+Plot the total study range (time from start of first session to end of last session) per user:
+```{r}
+ggplot(session_span, aes(y = end_doc, ymin = start_doc, ymax = end_doc, x = sort(User, decreasing = TRUE))) +
+  scale_x_discrete(expand = c(0.05, 0)) +
+  geom_linerange(position = position_dodge(1), lwd = 0.5) +
+  scale_y_continuous() +
+  coord_flip() +
+    geom_hline(yintercept = c(rl_available_date - start_date, exam_date - start_date, resit_date - start_date), lty = "dotted") +
+  annotate("label", y = c(rl_available_date - start_date + 1, exam_date - start_date, resit_date - start_date - 1), x = 140, label = c("Start", "Exam", "Resit")) +
+  labs(x = "User", y = "Day of course") +
+  theme(axis.text.y=element_blank(),
+        axis.ticks.y=element_blank())
+  
+if(save_figs) ggsave(paste0(fig_path, "first_and_last_usage.pdf"), width = 5, height = 3)
+```
 
+Colour each user's line based on their final grade in the course:
+```{r}
+ggplot(session_span, aes(y = end_doc, ymin = start_doc, ymax = end_doc, x = sort(User, decreasing = TRUE), colour = Grade)) +
+  scale_x_discrete(expand = c(0.05, 0)) +
+  geom_linerange(position = position_dodge(1), lwd = 0.5) +
+  scale_y_continuous() +
+  scale_color_gradient2(low = "#de2d26", high = "#31a354", mid = "#ffeda0", midpoint = 5) +
+  coord_flip() +
+    geom_hline(yintercept = c(rl_available_date - start_date, exam_date - start_date, resit_date - start_date), lty = "dotted") +
+  annotate("label", y = c(rl_available_date - start_date + 1, exam_date - start_date, resit_date - start_date - 1), x = 140, label = c("Start", "Exam", "Resit")) +
+  labs(x = "User", y = "Day of course") +
+  theme(axis.text.y=element_blank(),
+        axis.ticks.y=element_blank())
+  
+if(save_figs) ggsave(paste0(fig_path, "first_and_last_usage_with_grade.pdf"), width = 5, height = 3)
+```
 
 
 # Question Type
