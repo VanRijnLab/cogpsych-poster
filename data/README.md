@@ -4,7 +4,7 @@ The raw RuggedLearning data has been formatted and anonymised using the `prepare
 
 This file contains three data frames:
 
-- **data** : trial-by-trial information from study sessions using RuggedLearning (about 225,000 observations from 3800 learning sessions), along with reconstructed model parameters
+- **data** : trial-by-trial information from study sessions using RuggedLearning (262,978 observations from 4716 learning sessions), along with reconstructed model parameters
 
 - **exam.item** : each student's exam performance on items that were part of the study items, along with information about how these items were studied before the exam
 
