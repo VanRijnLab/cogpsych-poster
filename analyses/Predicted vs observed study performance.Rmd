@@ -73,10 +73,10 @@ data$est.correct <- data$activation >= -.8
 The number of errors made by students during learning was relatively low: `r percent(mean(data$correct))` of all recorded responses were correct. This is great. The model estimates a fact to be un-retrievable if the estimated activation is below the retrieval threshold. Across all recorded trials, the estimated activation was below the threshold on `r percent(mean(data$est.correct))`% of the trials. This indicates that the model severely underestimates students' performance. Overall, the predicted behavior matched the observed behavior on `r percent(mean(data$correct == data$est.correct))`% of the trials. 
 
 ```{r}
-1 / (bf.prop <- proportionBF(sum(data$correct == data$est.correct), nrow(data), p=1/2))
+(bf.prop <- proportionBF(sum(data$correct == data$est.correct), nrow(data), p=1/2))
 ```
 
-The proportion test yields strong evidence that the proportion of instances in which the predicted response matches the observed response is equal to 0.5. It is in fact `r round(mean(data$correct == data$est.correct), 3)`. (The statistical test is based on N = `r prettyNum(nrow(data), big.mark=",")`, so there's a ton of data.)
+The proportion test yields strong evidence that proportion of instances in which the predicted response matches the observed response is equal not 0.5. It is in fact `r round(mean(data$correct == data$est.correct), 3)`. (The statistical test is based on N = `r prettyNum(nrow(data), big.mark=",")`. There's so much data that this test becomes pretty much meaningless, I think.)
 
 There is a potential problem here, though: The proportion of trials in which the estimated activation is very low is rather high. Ideally, the model will prevent this situation by making sure that items are presented for rehearsal before the activation can decay that much. However, the model can only do this if people are actually studying. It cannot prevent activation to decay between sessions. Therefore, it makes sense to look at the activation of a fact seperately for (a) the first repetition in a session after a delay, and (b) within-session repetitions. The proportion of instances in which the model's prediction matches the behavior should be higher in (b) and might potentially be very low for (a). In (b), the number of trials in which the predicted activation is below the threshold should ideally be 0.
 
@@ -103,12 +103,101 @@ emp.cor <- aggregate(correct ~ first.in.session, data, mean)
 est.cor <- aggregate(est.correct ~ first.in.session, data, mean)
 ```
 
-Since sessions tend to be rather short, the number of trials that are the first repetition of an item in a given session is relatively high: `r percent(mean(data$first.in.session))`. What is interesting is that **in the empirical data**, there is hardly any difference in the proportion of correct responses for the first repetition of an item (`r percent(emp.cor$correct[2])`) and for subsequent repetitions (`r percent(emp.cor$correct[1])`). **In the estimated responses**, on the other hand, there is a difference: `r percent(est.cor$est.correct[2])` (first rep) compared to `r percent(est.cor$est.correct[1])` (subsequent reps). Notably, both these percentages severely underestimate students' actual performance.
+Since sessions tend to be rather short, the number of trials that are the first repetition of an item in a given session is relatively high: `r percent(mean(data$first.in.session))`. What is interesting is that **in the empirical data**, there is hardly any difference in the proportion of correct responses for the first repetition of an item (`r percent(emp.cor$correct[2])`) and for subsequent repetitions (`r percent(emp.cor$correct[1])`). **In the estimated responses**, on the other hand, there is a stark difference: `r percent(est.cor$est.correct[2])` (first rep) compared to `r percent(est.cor$est.correct[1])` (subsequent reps). Notably, both these percentages severely underestimate students' actual performance.
+
+This indicates that the model doesn't deal with the way that time elapses between sessions very well. We should look into this in more detail. Now the model just assumes that time "on task" and time "off task" is the same. Some workaround using "psychological time" (as used in ACT-R models) might be a way to handle this. This would require more exploration, though.
+
+
+### Looking only at the first session
+
+One way to side-step the issue of time between sessions is to look only at the very first session for a moment. Some sessions are very short so lets only look at session that have at least 20 trials and don't have RTs that are longer than a minute:
+
+```{r}
+data.sess1 <- subset(data, session == 1)
+
+tr <- aggregate(repetition ~ User, data.sess1, length)
+tr$maxRT <- aggregate(reactionTime ~ User, data.sess1, max)$reactionTime
+tr <- subset(tr, repetition >= 20 & maxRT < (60*1000))
+
+data.sess1 <- subset(data.sess1, User %in% tr$User)
+```
+
+Alright, now we have a total of `r nrow(data.sess1)` trials from `r length(unique(data.sess1$User))` users. So this is a relatively small subset of the data (read: take this with a grain of salt).
+
+```{r}
+tmp <- subset(data.sess1, !is.infinite(activation)) # this removes the first presentation of an item (i.e., the study trial)
+mean(tmp$est.correct) # estimated accuracy
+mean(tmp$correct) # actual/observed accuracy
+```
+
+What we see is that the estimated accuracy in the first session is still rather low when we look only at this subset of the data. This is potentially problematic and we should look into this in more detail.
+
+Remake 2x2 table for comparison:
+
+```{r}
+percent(mean(tmp$correct & tmp$est.correct)) # is correct, was predicted correct
+percent(mean(tmp$correct & !tmp$est.correct)) # is correct, was predicted incorrect
+
+percent(mean(!tmp$correct & tmp$est.correct)) # is not correct, was predicted correct
+percent(mean(!tmp$correct & !tmp$est.correct)) # is not correct, was predicted incorrect
+```
+
+### Predicted vs. observed as a function of repetition
+
+Another interesting way to look at these data and the mismatch between predicted and observed activation (as accuracy) is to 
+
+```{r}
+y <- cumsum(table(data$repetition))
+a <- data.frame(repetitions=1:length(y), observations=y)
+cutoff <- 10
+ggplot(a, aes(repetitions, observations)) + geom_line() + geom_point() + geom_vline(xintercept = cutoff, color="red") + labs(title=paste(percent(mean(data$repetition <= cutoff)), "of items were repeated", cutoff, "times or less"))
+```
+
+Put together the data we need to make the plot/overview:
+
+```{r}
+acc.rep <- NULL
+
+for(r in 1:cutoff) {
+  tmp <- subset(data, repetition == r)
+  acc.rep <- rbind(acc.rep,
+                   data.frame(rep=r, 
+                              type="Observed",
+                              correct=mean(tmp$correct)),
+                   data.frame(rep=r,
+                              type="Predicted",
+                              correct=mean(tmp$est.correct))
+                   )
+}
+
+# Make the plot:
+ggplot(acc.rep, aes(x=rep, y=correct, group=type)) + 
+  geom_line(color="grey") + 
+  geom_point(aes(color=type), size=4) + 
+  geom_text(aes(label=round(correct, 2)), nudge_y = .05, size=3, color="darkgray") +
+  scale_x_continuous(breaks = seq(1, cutoff, 1)) +
+  theme(legend.position = c(0.8, 0.2)) +
+  labs(x="Repetition of an item (within a session)", y="Proportion correct", color=NULL) +
+  
+  NULL
+
+# ggsave(file.path(figures.folder, "Predicted vs. observed accuracy f(rep).pdf"), width = 5, height = 4)
+```
 
 
 ### Comparison with TopiCS data
 
 This comparison is not very interesting because the output of the experimental setup did not include the estimated activation on each trial, only the estimated RT. The only comparison we can make is to report that in these data, participants responded correctly on `r percent(mean(lab.data$isCorrect))` of the trials (which is just a little bit lower than the `r percent(mean(data$correct))` in the real world data).
+
+
+
+
+
+
+
+
+
+
 
 
 # Comparing predicted and observed response times
@@ -157,7 +246,7 @@ ggplot(data.RT, aes(reactionTime)) +
   geom_vline(xintercept = median(data.RT$reactionTime), color="red") +
   labs(x="Recorded Reaction Time (in ms)", 
        title="Distribution of Recorded RTs", 
-       subtitle = paste("Based on non-NA RTs in the range of [", paste(prettyNum(RT.cutoff, big.mark = ","), collapse = "; "), "]", sep="")) 
+       subtitle = paste("Based on ", prettify(nrow(data.RT))," non-NA RTs in the range of [", paste(prettyNum(RT.cutoff, big.mark = ","), collapse = "; "), "]", sep="")) 
 ```
 
 Now for the estimated/predicted RTs. One issue here is that a good portion of the predicted RTs are `Inf` and a similar portion are longer than the upper boundary of the `RT.cutoff`. I'll plot here only
@@ -212,7 +301,7 @@ ggplot(data.RT.sub, aes(estimatedResponseTime/1000, reactionTime/1000)) +
   # theme(legend.title=element_text(size=8)) +
   NULL
 
-# ggsave(file.path(figures.folder, "Predicted vs. observed RT distributions hexbin.pdf"), width = 5, height = 5)
+# ggsave(file.path(figures.folder, "Predicted vs. observed RT distributions hexbin.pdf"), width = 3, height = 3)
 ```
 
 
@@ -261,11 +350,24 @@ ggplot(dist, aes(x, group=type)) +
 
 Using a cutoff of `r prettify(cutoff)` for the plotting, we're retaining `r percent(retained)` of the data. Note that the correlation coefficient and the overlap are computed across all data in `data.RT.sub` and are not affected by the `cutoff`.
 
-Do the distributions look very different for trials with correct and incorrect responses?
+
+### Looking only at the first session
+
+Split it up:
 
 ```{r}
-ggplot(data.RT.sub, aes(estimatedResponseTime)) + geom_density(aes(fill=correct), alpha=.6) + labs(title="Predicted RTs Only") + xlim(0, 20000)
+data.RT.sub$sess <- ifelse(data.RT.sub$session == 1, "First Session", "Subsequent Sessions")
+
+dist <- rbind(data.frame(x=data.RT.sub$reactionTime, type="Observed", sess=data.RT.sub$sess),
+              data.frame(x=data.RT.sub$estimatedResponseTime, type="Predicted", sess=data.RT.sub$sess))
+
+ggplot(dist, aes(x, group=type)) + 
+  geom_density(aes(fill=type), alpha=.7, color=NA) +
+  facet_grid(sess ~ .) +
+  xlim(0, 30*1000)
 ```
+
+Doesn't look like there's much of a difference.
 
 
 ## Conclusions

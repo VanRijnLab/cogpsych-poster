@@ -81,7 +81,7 @@ pj <- position_jitter(width=.1, height = 0)
 
 ggplot(exam.per.student, aes(studied, correct.exam)) + 
   # geom_violin(scale="count") + 
-  geom_boxplot(width=.4, outlier.color = NA, color="gray") +
+  geom_boxplot(width=.45, outlier.color = NA, color="darkgray") +
   # geom_line(aes(group=Username), color="lightgrey", alpha=.5, position=pj) +
   geom_point(aes(color=studied, size=count), alpha=.3, position=pj, show.legend = FALSE) +
   geom_segment(aes(x = 1, y = grand.means$correct.exam[1], xend = 1.5, yend = grand.means$correct.exam[1]), color="darkgrey") + 
@@ -94,7 +94,7 @@ ggplot(exam.per.student, aes(studied, correct.exam)) +
   # scale_colour_discrete(guide = FALSE) +
   NULL
 
-# ggsave(file.path(figures.folder, "Proportion correct on exam f(studied).pdf"), width = 3.5, height = 5)
+# ggsave(file.path(figures.folder, "Proportion correct on exam f(studied).pdf"), width = 3, height = 5)
 ```
 
 The size of the points indicates the number of observations the proportion is based on, smaller points correspond to fewer observations.
@@ -221,7 +221,7 @@ Note that the full model has a lower AIC but that the BIC is lowest for the no-p
 I'll use the model that includes both the `reps` and `final.alpha` to generate some model predictions that I can plot as a way to visualize the effects captured by the best-fitting model. I'll take a look at the distribution of the two predictors to identify a range of values that can be predicted using the model:
 
 ```{r}
-alpha.points <- seq(-2, 2, 0.75)
+alpha.points <- seq(-2, 2, 1)
 ggplot(exam.item.studied, aes(alpha.N)) + geom_density() + geom_vline(xintercept = alpha.points, color="orange") + labs(title="Points to be predicted for alpha.N with on original distribution")
 
 reps.points <- seq(1.2, 3.8, .6)
@@ -244,14 +244,14 @@ ggplot(new.data, aes(reps, pred.prop, group=alpha.N)) +
   # geom_line(aes(color=factor(alpha.N))) + 
   # geom_point(aes(color=factor(alpha.N)), size=3) + 
   geom_line(aes(color=factor(alpha.N))) + 
-  geom_point(aes(color=factor(alpha.N)), size=3, alpha=.9) + 
+  geom_point(aes(color=factor(alpha.N)), size=3.5) + 
   labs(x="\nRepetitions of an item (re-transformed from log-scale)", y="Predicted probability of\nanswering an item correctly", color="Normalized alpha:") + 
   scale_x_continuous(breaks = unique(new.data$reps), labels = round(unique(new.data$reps), 1)) +
   # theme(legend.direction = "horizontal") +
   theme(legend.position = c(.8, .3)) +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1, size=7)) +
-  theme(axis.text.y = element_text(size=7)) +
-  scale_color_brewer(palette="Set2") +
+  # theme(axis.text.x = element_text(angle = 60, hjust = 1, size=9)) +
+  # theme(axis.text.y = element_text(size=9)) +
+  scale_color_brewer(palette="Set2", labels=c("+2 SD", "+1 SD", "mean value", "-1 SD", "-2 SD")) +
   NULL
 
 # ggsave(file.path(figures.folder, "Pred prop correct f(reps, alpha).pdf"), width = 7, height = 4)
