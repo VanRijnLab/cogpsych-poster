@@ -24,7 +24,7 @@ theme_set(theme_classic())
 
 fig_path <- "figures for ICCM poster/usage/"
 
-save_figs <- FALSE
+save_figs <- TRUE
 ```
 
 
@@ -380,7 +380,10 @@ table(session_type$type)/nrow(session_type)
 session_type_over_time <- session_type %>%
   left_join(usage_by_doy, by = "doy") %>%
   group_by(doy, day_of_course, type) %>%
-  summarise(n_sessions = n())
+  summarise(n_sessions = n()) 
+
+# Nobody used the system on the day of the resit, so add the final day separately
+session_type_over_time <- bind_rows(session_type_over_time, data.frame(doy = rep(as_date("2017-12-07"), 2), day_of_course = as.difftime(rep(resit_date - start_date, 2), units = "days"), type = c("Multiple choice", "Open"), n_sessions = rep(0L, 2)))
 
 ggplot(session_type_over_time, aes(x = day_of_course, y = n_sessions, colour = type)) +
   geom_line() +
