@@ -326,8 +326,8 @@ dist <- subset(dist, x < cutoff)
 
 medians <- aggregate(x ~ type, dist, median)
 
-rmse <- sqrt(mean((data.RT.sub$reactionTime - data.RT.sub$estimatedResponseTime)^2))
-mae <- mean(abs(data.RT.sub$reactionTime - data.RT.sub$estimatedResponseTime))
+rmse <- sqrt(mean((data.RT.sub$reactionTime - data.RT.sub$estimatedResponseTime)^2)) / 1000
+mae <- mean(abs(data.RT.sub$reactionTime - data.RT.sub$estimatedResponseTime)) / 1000
 
 # Make the plot:
 ggplot(dist, aes(x, group=type)) + 
@@ -335,8 +335,8 @@ ggplot(dist, aes(x, group=type)) +
   # Add some text to the plot:
   annotate("text", x=cutoff*.5 + 500, y=2.5/10000, label=paste("Overlap:", percent(olap$OV)), hjust=0) +
   annotate("text", x=cutoff*.5 + 500, y=2/10000, label=paste("r =", round(corr, 3)), hjust=0) +
-  annotate("text", x=cutoff*.5 + 500, y=1.5/10000, label=paste("RMSE =", prettify(round(rmse))), hjust=0) +
-  annotate("text", x=cutoff*.5 + 500, y=1/10000, label=paste("MAE =", prettify(round(mae))), hjust=0) +
+  annotate("text", x=cutoff*.5 + 500, y=1.5/10000, label=paste("RMSE =", round(rmse, 2)), hjust=0) +
+  annotate("text", x=cutoff*.5 + 500, y=1/10000, label=paste("MAE =", round(mae, 2)), hjust=0) +
   geom_vline(data=medians, aes(xintercept=x, color=type), show.legend = FALSE) +
   theme(legend.position = c(0.585, 0.85)) +
   # labs(title="Comparing RT Distributions: Observed vs. Predicted", subtitle="Vertical lines are the distributions' medians", x="Response Time (ms)", y=NULL, fill=NULL) +
