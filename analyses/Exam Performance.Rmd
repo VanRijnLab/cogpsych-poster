@@ -251,7 +251,7 @@ ggplot(new.data, aes(reps, pred.prop, group=alpha.N)) +
   theme(legend.position = c(.8, .3)) +
   # theme(axis.text.x = element_text(angle = 60, hjust = 1, size=9)) +
   # theme(axis.text.y = element_text(size=9)) +
-  scale_color_brewer(palette="Set2", labels=c("+2 SD", "+1 SD", "mean value", "-1 SD", "-2 SD")) +
+  scale_color_brewer(palette="Set2", labels=c("-2 SD", "-1 SD", "mean value", "+1 SD", "+2 SD")) +
   NULL
 
 # ggsave(file.path(figures.folder, "Pred prop correct f(reps, alpha).pdf"), width = 7, height = 4)
